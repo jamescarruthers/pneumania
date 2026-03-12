@@ -46,7 +46,7 @@ export function updateDoubleActingCylinder(
   // TLM-coupled Newton's second law
   const hydraulicStiffness = Zc_A * A_cap * A_cap + Zc_B * A_rod * A_rod;
   const F_wave = c_A * A_cap - c_B * A_rod;
-  const F_ext = externalForce + (comp.params.external_force ?? 0);
+  const F_ext = externalForce + (comp.params.external_force ?? 0) + (comp.state.signal_input ?? 0);
 
   const denom = mass / params.dt + hydraulicStiffness + frictionViscous;
   let v_new = (mass * velocity / params.dt + F_wave + F_ext) / denom;
@@ -111,7 +111,7 @@ export function updateSingleActingCylinder(
   // Spring return force + atmospheric pressure on rod side
   const F_spring = -(springRate * position + springPreload);
   const F_atm = -P_ATM * A_rod;
-  const F_ext = externalForce + (comp.params.external_force ?? 0);
+  const F_ext = externalForce + (comp.params.external_force ?? 0) + (comp.state.signal_input ?? 0);
 
   // Semi-implicit: include spring stiffness in denominator for stability
   const hydraulicStiffness = Zc_A * A_cap * A_cap;

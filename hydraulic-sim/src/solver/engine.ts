@@ -21,7 +21,7 @@ import {
 } from '../fluid/properties';
 import { updatePressureSource, updateTank, updateTlmLine, updateTeeJunction, updateHydropneumaticSphere, updatePistonAccumulator, updateBalloon } from '../components/models/cTypes';
 import { updateDoubleActingCylinder, updateSingleActingCylinder, updateOrifice, updateCheckValve, updateOneWayFlowControl, updateVariableOrifice, updateDcv43, updateDcv32, updateSpring, updateMassLoad } from '../components/models/qTypes';
-import { updatePushButton, updateToggleSwitch, updateSliderControl } from '../components/models/sTypes';
+import { updatePushButton, updateToggleSwitch, updateSliderControl, updateOscillatingForce } from '../components/models/sTypes';
 
 export interface CompiledConnection {
   port_a: number;
@@ -215,6 +215,9 @@ export class TLMSolverEngine implements Solver {
       case 'SLIDER_CONTROL':
         updateSliderControl(comp, c.params);
         break;
+      case 'OSCILLATING_FORCE':
+        updateOscillatingForce(comp, c.params);
+        break;
     }
   }
 
@@ -351,6 +354,7 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     PUSH_BUTTON: 'spool_position',
     TOGGLE_SWITCH: 'spool_position',
     SLIDER_CONTROL: 'value',
+    OSCILLATING_FORCE: 'force_value',
   };
 
   // Compile connections — separate signal routes from TLM connections
@@ -519,6 +523,11 @@ function initComponentState(def: { type: string; params: Record<string, number |
       break;
     case 'SLIDER_CONTROL':
       state.value = typeof p.initial_value === 'number' ? p.initial_value : 0;
+      break;
+    case 'OSCILLATING_FORCE':
+      state.force_value = 0;
+      state.random_cycle = -1;
+      state.random_value = 0;
       break;
     case 'TLM_LINE':
       state.p_internal = typeof p.initial_pressure === 'number' ? p.initial_pressure : 101325;

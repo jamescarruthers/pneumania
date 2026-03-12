@@ -721,6 +721,48 @@ export function drawToggleSwitchSymbol(sc: SymbolContext): void {
   ctx.restore();
 }
 
+export function drawOscillatingForceSymbol(sc: SymbolContext): void {
+  const { ctx, x, y, selected, state } = sc;
+  const stroke = getStroke(selected);
+
+  ctx.save();
+  ctx.translate(x, y);
+
+  // Box
+  ctx.fillStyle = FILL_COLOUR;
+  ctx.fillRect(-22, -14, 44, 28);
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(-22, -14, 44, 28);
+
+  // Sine wave icon
+  ctx.beginPath();
+  ctx.strokeStyle = '#feca57';
+  ctx.lineWidth = 1.5;
+  for (let i = -14; i <= 14; i++) {
+    const t = (i + 14) / 28;
+    const yOff = -8 * Math.sin(t * Math.PI * 2);
+    if (i === -14) ctx.moveTo(i, yOff);
+    else ctx.lineTo(i, yOff);
+  }
+  ctx.stroke();
+
+  // Force indicator (animated)
+  const forceValue = state?.force_value ?? 0;
+  const amplitude = (sc.params?.amplitude as number) ?? 1000;
+  const barHeight = amplitude > 0
+    ? Math.min(Math.abs(forceValue / amplitude), 1) * 10
+    : 0;
+  const barDir = forceValue >= 0 ? -1 : 1;
+  ctx.fillStyle = forceValue >= 0 ? '#00b894' : '#d63031';
+  ctx.fillRect(16, barDir > 0 ? 0 : -barHeight, 4, barHeight);
+
+  // Port
+  drawPort(ctx, 28, 0);
+
+  ctx.restore();
+}
+
 export function drawSliderSymbol(sc: SymbolContext): void {
   const { ctx, x, y, selected, state } = sc;
   const stroke = getStroke(selected);
@@ -822,6 +864,7 @@ export const COMPONENT_SIZES: Record<string, { width: number; height: number }> 
   PUSH_BUTTON: { width: 40, height: 24 },
   TOGGLE_SWITCH: { width: 44, height: 24 },
   SLIDER_CONTROL: { width: 52, height: 16 },
+  OSCILLATING_FORCE: { width: 50, height: 30 },
 };
 
 export function drawComponentSymbol(
@@ -885,6 +928,9 @@ export function drawComponentSymbol(
       break;
     case 'SLIDER_CONTROL':
       drawSliderSymbol(sc);
+      break;
+    case 'OSCILLATING_FORCE':
+      drawOscillatingForceSymbol(sc);
       break;
     default:
       // Generic box

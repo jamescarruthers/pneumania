@@ -81,6 +81,7 @@ export type ComponentType =
   | 'PUSH_BUTTON'
   | 'TOGGLE_SWITCH'
   | 'SLIDER_CONTROL'
+  | 'OSCILLATING_FORCE'
   | 'TLM_LINE';
 
 export type TLMClass = 'C' | 'Q' | 'S';
@@ -109,6 +110,7 @@ export const COMPONENT_TLM_CLASS: Record<ComponentType, TLMClass> = {
   PUSH_BUTTON: 'S',
   TOGGLE_SWITCH: 'S',
   SLIDER_CONTROL: 'S',
+  OSCILLATING_FORCE: 'S',
   TLM_LINE: 'C',
 };
 

@@ -145,6 +145,7 @@ export const COMPONENT_GROUPS = [
       { type: 'PUSH_BUTTON', label: 'Push Button' },
       { type: 'TOGGLE_SWITCH', label: 'Toggle Switch' },
       { type: 'SLIDER_CONTROL', label: 'Slider' },
+      { type: 'OSCILLATING_FORCE', label: 'Oscillating Force' },
     ],
   },
 ] as const;

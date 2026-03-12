@@ -206,6 +206,14 @@ export class TLMSolverEngine implements Solver {
     this.mouseForces.delete(componentId);
   }
 
+  setComponentState(componentId: string, key: string, value: number): void {
+    if (!this.circuit) return;
+    const comp = this.circuit.components.find((c) => c.id === componentId);
+    if (comp) {
+      comp.state[key] = value;
+    }
+  }
+
   getPortState(index: number): PortState {
     if (!this.circuit || index >= this.circuit.ports.length) {
       return createDefaultPort();

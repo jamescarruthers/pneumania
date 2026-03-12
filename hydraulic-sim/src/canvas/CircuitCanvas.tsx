@@ -18,6 +18,10 @@ export function CircuitCanvas() {
   const dragComponentRef = useRef<string | null>(null);
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0, camX: 0, camY: 0 });
+  // Runtime interaction: drag-force on cylinders
+  const isApplyingForceRef = useRef(false);
+  const forceComponentRef = useRef<string | null>(null);
+  const forceStartRef = useRef({ x: 0, y: 0 });
 
   const circuit = useCircuitStore((s) => s.circuit);
   const addComponent = useCircuitStore((s) => s.addComponent);
@@ -33,6 +37,9 @@ export function CircuitCanvas() {
   const componentStates = useSimulationStore((s) => s.componentStates);
   const simParams = useSimulationStore((s) => s.simParams);
   const updateFromSolver = useSimulationStore((s) => s.updateFromSolver);
+  const setMouseForce = useSimulationStore((s) => s.setMouseForce);
+  const clearMouseForce = useSimulationStore((s) => s.clearMouseForce);
+  const setComponentState = useSimulationStore((s) => s.setComponentState);
 
   const ui = useUIStore();
 
@@ -184,7 +191,45 @@ export function CircuitCanvas() {
       const compHit = hitTestComponent(world.x, world.y, circuit.components);
       if (compHit) {
         ui.selectComponent(compHit.id, e.shiftKey);
-        if (!running) {
+
+        if (running) {
+          // Runtime interactions
+          const compType = compHit.type;
+
+          if (compType === 'PUSH_BUTTON') {
+            // Press the button (held while mouse is down, released on mouseUp)
+            setComponentState(compHit.id, 'pressed', 1);
+            isApplyingForceRef.current = true;
+            forceComponentRef.current = compHit.id;
+          } else if (compType === 'TOGGLE_SWITCH') {
+            // Toggle between states
+            const currentState = componentStates.get(compHit.id);
+            const positions = compHit.params.position_count;
+            const posCount = typeof positions === 'number' ? positions : 2;
+            const current = currentState?.toggle_state ?? 0;
+            if (posCount === 2) {
+              setComponentState(compHit.id, 'toggle_state', current > 0.5 ? 0 : 1);
+            } else {
+              // 3-position: cycle -1 -> 0 -> 1 -> -1
+              const rounded = Math.round(current);
+              const next = rounded >= 1 ? -1 : rounded + 1;
+              setComponentState(compHit.id, 'toggle_state', next);
+            }
+          } else if (compType === 'SLIDER_CONTROL') {
+            // Start slider drag
+            isApplyingForceRef.current = true;
+            forceComponentRef.current = compHit.id;
+            forceStartRef.current = world;
+          } else if (
+            compType === 'DOUBLE_ACTING_CYLINDER' ||
+            compType === 'SINGLE_ACTING_CYLINDER'
+          ) {
+            // Start applying force via drag
+            isApplyingForceRef.current = true;
+            forceComponentRef.current = compHit.id;
+            forceStartRef.current = world;
+          }
+        } else {
           isDraggingRef.current = true;
           dragComponentRef.current = compHit.id;
           dragStartRef.current = world;
@@ -207,7 +252,7 @@ export function CircuitCanvas() {
         camY: ui.cameraY,
       };
     },
-    [screenToWorld, ui, circuit.components, running, addComponent, addConnection]
+    [screenToWorld, ui, circuit.components, running, addComponent, addConnection, setComponentState, componentStates, setMouseForce]
   );
 
   const handleMouseMove = useCallback(
@@ -223,6 +268,38 @@ export function CircuitCanvas() {
         return;
       }
 
+      if (isApplyingForceRef.current && forceComponentRef.current) {
+        const world = screenToWorld(e.clientX, e.clientY);
+        const comp = circuit.components.find((c) => c.id === forceComponentRef.current);
+        if (comp) {
+          if (comp.type === 'SLIDER_CONTROL') {
+            // Map vertical drag to 0-1 slider value
+            const dy = forceStartRef.current.y - world.y;
+            const currentState = componentStates.get(comp.id);
+            const baseValue = currentState?.value ?? 0;
+            const sensitivity = 0.01; // per pixel
+            const newValue = Math.max(0, Math.min(1, baseValue + dy * sensitivity));
+            setComponentState(comp.id, 'value', newValue);
+            forceStartRef.current = world;
+          } else {
+            // Cylinder: compute force from drag displacement
+            const dy = world.y - forceStartRef.current.y;
+            const dx = world.x - forceStartRef.current.x;
+            // Use rotation to determine force direction
+            const rot = comp.rotation || 0;
+            let displacement: number;
+            if (rot === 0 || rot === 180) {
+              displacement = dy; // vertical component
+            } else {
+              displacement = dx; // horizontal component
+            }
+            const forceMagnitude = displacement * 100; // 100 N per pixel
+            setMouseForce(comp.id, forceMagnitude);
+          }
+        }
+        return;
+      }
+
       if (isDraggingRef.current && dragComponentRef.current) {
         const world = screenToWorld(e.clientX, e.clientY);
         const snapped = {
@@ -232,14 +309,28 @@ export function CircuitCanvas() {
         updateComponentPosition(dragComponentRef.current, snapped.x, snapped.y);
       }
     },
-    [screenToWorld, ui, updateComponentPosition]
+    [screenToWorld, ui, updateComponentPosition, circuit.components, componentStates, setMouseForce, setComponentState]
   );
 
   const handleMouseUp = useCallback(() => {
+    // Release push button when mouse is released
+    if (isApplyingForceRef.current && forceComponentRef.current) {
+      const comp = circuit.components.find((c) => c.id === forceComponentRef.current);
+      if (comp?.type === 'PUSH_BUTTON') {
+        setComponentState(comp.id, 'pressed', 0);
+      } else if (
+        comp?.type === 'DOUBLE_ACTING_CYLINDER' ||
+        comp?.type === 'SINGLE_ACTING_CYLINDER'
+      ) {
+        clearMouseForce(comp.id);
+      }
+    }
+    isApplyingForceRef.current = false;
+    forceComponentRef.current = null;
     isDraggingRef.current = false;
     dragComponentRef.current = null;
     isPanningRef.current = false;
-  }, []);
+  }, [circuit.components, setComponentState, clearMouseForce]);
 
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {

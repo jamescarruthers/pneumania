@@ -1,7 +1,7 @@
 /**
  * TLM Solver Engine — JavaScript reference implementation.
  *
- * Execution order each Δt: C-types → Q-types → S-types
+ * Execution order each Δt: C-types → S-types → signal routing → Q-types
  * All components within each class execute independently (embarrassingly parallel).
  */
 
@@ -46,6 +46,7 @@ export interface CompiledCircuit {
   connections: CompiledConnection[];
   signalRoutes: SignalRoute[];
   components: ComponentInstance[];
+  componentById: Map<string, ComponentInstance>;
   cComponents: ComponentInstance[];
   qComponents: ComponentInstance[];
   sComponents: ComponentInstance[];
@@ -106,13 +107,9 @@ export class TLMSolverEngine implements Solver {
     }
 
     // Pass 3b: Signal routing — propagate S-type outputs to Q-type inputs
-    const componentById = new Map<string, ComponentInstance>();
-    for (const comp of c.components) {
-      componentById.set(comp.id, comp);
-    }
     for (const route of c.signalRoutes) {
-      const src = componentById.get(route.sourceComponentId);
-      const tgt = componentById.get(route.targetComponentId);
+      const src = c.componentById.get(route.sourceComponentId);
+      const tgt = c.componentById.get(route.targetComponentId);
       if (src && tgt) {
         tgt.state[route.targetKey] = src.state[route.sourceKey] ?? 0;
       }
@@ -359,6 +356,7 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
   // Compile connections — separate signal routes from TLM connections
   const connections: CompiledConnection[] = [];
   const signalRoutes: SignalRoute[] = [];
+  const warnedMismatches: string[] = [];
   for (const connDef of def.connections) {
     const fromMap = componentPortMap.get(connDef.from.component);
     const toMap = componentPortMap.get(connDef.to.component);
@@ -372,9 +370,9 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     const toType = portTypeLookup.get(`${connDef.to.component}:${connDef.to.port}`);
     if (fromType === 'signal' || toType === 'signal') {
       if (fromType !== 'signal' || toType !== 'signal') {
-        // Mismatched connection (signal↔hydraulic/mechanical) — skip with warning
-        console.warn(
-          `Signal routing: skipping mismatched connection ${connDef.from.component}:${connDef.from.port} (${fromType}) → ${connDef.to.component}:${connDef.to.port} (${toType})`
+        // Mismatched connection (signal↔hydraulic/mechanical) — collect for single warning
+        warnedMismatches.push(
+          `  ${connDef.from.component}:${connDef.from.port} (${fromType}) → ${connDef.to.component}:${connDef.to.port} (${toType})`
         );
         continue;
       }
@@ -426,6 +424,12 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     });
   }
 
+  if (warnedMismatches.length > 0) {
+    console.warn(
+      `Signal routing: skipping ${warnedMismatches.length} mismatched connection(s):\n${warnedMismatches.join('\n')}`
+    );
+  }
+
   // Compute dt from minimum line delay
   let minDelay = Infinity;
   for (const conn of connections) {
@@ -435,6 +439,12 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     if (delay < minDelay) minDelay = delay;
   }
   params.dt = minDelay > 0 && minDelay < Infinity ? minDelay : 1e-4;
+
+  // Build component lookup map (cached for use during stepping)
+  const componentById = new Map<string, ComponentInstance>();
+  for (const comp of components) {
+    componentById.set(comp.id, comp);
+  }
 
   // Classify components
   const cComponents = components.filter((c) => c.tlmClass === 'C');
@@ -448,6 +458,7 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     connections,
     signalRoutes,
     components,
+    componentById,
     cComponents,
     qComponents,
     sComponents,

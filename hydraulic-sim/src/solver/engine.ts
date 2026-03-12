@@ -100,23 +100,27 @@ export class TLMSolverEngine implements Solver {
       this.updateCType(comp);
     }
 
-    // Pass 3: Q-type components
-    for (const comp of c.qComponents) {
-      this.updateQType(comp);
-    }
-
-    // Pass 4: S-type components
+    // Pass 3: S-type components (before Q-types so signals propagate same step)
     for (const comp of c.sComponents) {
       this.updateSType(comp);
     }
 
-    // Pass 4b: Signal routing — propagate S-type outputs to Q-type inputs
+    // Pass 3b: Signal routing — propagate S-type outputs to Q-type inputs
+    const componentById = new Map<string, ComponentInstance>();
+    for (const comp of c.components) {
+      componentById.set(comp.id, comp);
+    }
     for (const route of c.signalRoutes) {
-      const src = c.components.find((x) => x.id === route.sourceComponentId);
-      const tgt = c.components.find((x) => x.id === route.targetComponentId);
+      const src = componentById.get(route.sourceComponentId);
+      const tgt = componentById.get(route.targetComponentId);
       if (src && tgt) {
         tgt.state[route.targetKey] = src.state[route.sourceKey] ?? 0;
       }
+    }
+
+    // Pass 4: Q-type components
+    for (const comp of c.qComponents) {
+      this.updateQType(comp);
     }
 
     // Pass 5: Swap buffers
@@ -186,6 +190,8 @@ export class TLMSolverEngine implements Solver {
         updateVariableOrifice(comp, c.ports, c.fluids, c.params);
         break;
       case 'DCV_4_3':
+      case 'DCV_5_2':
+      case 'DCV_5_3':
         updateDcv43(comp, c.ports, c.fluids, c.params);
         break;
       case 'DCV_3_2':
@@ -361,11 +367,18 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     const portB = toMap.get(connDef.to.port);
     if (portA === undefined || portB === undefined) continue;
 
-    // Check if either end is a signal port
+    // Check if endpoints are signal ports
     const fromType = portTypeLookup.get(`${connDef.from.component}:${connDef.from.port}`);
     const toType = portTypeLookup.get(`${connDef.to.component}:${connDef.to.port}`);
     if (fromType === 'signal' || toType === 'signal') {
-      // Determine source (S-type) and target (Q-type) components
+      if (fromType !== 'signal' || toType !== 'signal') {
+        // Mismatched connection (signal↔hydraulic/mechanical) — skip with warning
+        console.warn(
+          `Signal routing: skipping mismatched connection ${connDef.from.component}:${connDef.from.port} (${fromType}) → ${connDef.to.component}:${connDef.to.port} (${toType})`
+        );
+        continue;
+      }
+      // Both endpoints are signal — determine source (S-type) and target (Q-type) components
       const fromComp = def.components.find((c) => c.id === connDef.from.component);
       const toComp = def.components.find((c) => c.id === connDef.to.component);
       if (fromComp && toComp) {

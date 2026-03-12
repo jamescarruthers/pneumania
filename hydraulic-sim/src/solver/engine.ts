@@ -228,7 +228,7 @@ export class TLMSolverEngine implements Solver {
 
   setComponentState(componentId: string, key: string, value: number): void {
     if (!this.circuit) return;
-    const comp = this.circuit.components.find((c) => c.id === componentId);
+    const comp = this.circuit.componentById.get(componentId);
     if (comp) {
       comp.state[key] = value;
     }
@@ -243,7 +243,7 @@ export class TLMSolverEngine implements Solver {
 
   getComponentState(id: string): Record<string, number> {
     if (!this.circuit) return {};
-    const comp = this.circuit.components.find((c) => c.id === id);
+    const comp = this.circuit.componentById.get(id);
     if (!comp) return {};
     return { ...comp.state };
   }
@@ -471,6 +471,9 @@ function initComponentState(def: { type: string; params: Record<string, number |
   const p = def.params;
 
   switch (def.type) {
+    case 'PRESSURE_SOURCE':
+      state.ramp_count = 0;
+      break;
     case 'DOUBLE_ACTING_CYLINDER':
     case 'SINGLE_ACTING_CYLINDER':
       state.position = (typeof p.position === 'number' ? p.position : 0);
@@ -516,6 +519,9 @@ function initComponentState(def: { type: string; params: Record<string, number |
       break;
     case 'SLIDER_CONTROL':
       state.value = typeof p.initial_value === 'number' ? p.initial_value : 0;
+      break;
+    case 'TLM_LINE':
+      state.p_internal = typeof p.initial_pressure === 'number' ? p.initial_pressure : 101325;
       break;
     case 'TEE_JUNCTION':
     case 'CROSS_JUNCTION':

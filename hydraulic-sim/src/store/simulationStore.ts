@@ -65,12 +65,33 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     const compiled = solver.getCompiledCircuit();
     if (!compiled) return;
 
+    // Reuse arrays/maps — only copy state values to avoid triggering unnecessary re-renders
+    const prevPorts = get().portStates;
+    let portStates: PortState[];
+    if (prevPorts.length === compiled.ports.length) {
+      portStates = prevPorts;
+      for (let i = 0; i < compiled.ports.length; i++) {
+        const src = compiled.ports[i];
+        const dst = portStates[i];
+        dst.p = src.p;
+        dst.q = src.q;
+        dst.c = src.c;
+        dst.Zc = src.Zc;
+        dst.fluid_id = src.fluid_id;
+      }
+    } else {
+      portStates = compiled.ports.map((p) => ({ ...p }));
+    }
+
+    const componentStates = new Map<string, Record<string, number>>();
+    for (const c of compiled.components) {
+      componentStates.set(c.id, { ...c.state });
+    }
+
     set({
       simParams: solver.getSimParams(),
-      portStates: compiled.ports.map((p) => ({ ...p })),
-      componentStates: new Map(
-        compiled.components.map((c) => [c.id, { ...c.state }])
-      ),
+      portStates,
+      componentStates,
     });
   },
 

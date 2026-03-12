@@ -78,7 +78,6 @@ export type ComponentType =
   | 'BALLOON_CYLINDRICAL'
   | 'SPRING'
   | 'MASS_LOAD'
-  | 'LINKED_CYLINDERS'
   | 'PUSH_BUTTON'
   | 'TOGGLE_SWITCH'
   | 'SLIDER_CONTROL'
@@ -107,7 +106,6 @@ export const COMPONENT_TLM_CLASS: Record<ComponentType, TLMClass> = {
   BALLOON_CYLINDRICAL: 'C',
   SPRING: 'Q',
   MASS_LOAD: 'Q',
-  LINKED_CYLINDERS: 'Q',
   PUSH_BUTTON: 'S',
   TOGGLE_SWITCH: 'S',
   SLIDER_CONTROL: 'S',

@@ -3,7 +3,7 @@
  * Handles pan/zoom, component placement, port connection, piston drag.
  */
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useMemo } from 'react';
 import { useCircuitStore } from '../store/circuitStore';
 import { useSimulationStore } from '../store/simulationStore';
 import { useUIStore } from '../store/uiStore';
@@ -67,8 +67,8 @@ export function CircuitCanvas() {
     [ui.zoom, ui.cameraX, ui.cameraY]
   );
 
-  // Build port index map for rendering
-  const portIndexMap = useCallback(() => {
+  // Build port index map for rendering (memoized — topology doesn't change during simulation)
+  const portIndexMapCached = useMemo(() => {
     const map = new Map<string, number>();
     let idx = 0;
     for (const comp of circuit.components) {
@@ -88,6 +88,7 @@ export function CircuitCanvas() {
     if (!ctx) return;
 
     let lastTime = performance.now();
+    let stepDeficit = 0;
 
     const loop = (now: number) => {
       // Resize
@@ -101,13 +102,16 @@ export function CircuitCanvas() {
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // Solver steps
+      // Solver steps — spread catch-up over multiple frames to avoid cascading slowdowns
       if (running) {
         const dt = simParams.dt || 1e-4;
-        const elapsed = (now - lastTime) / 1000;
-        const targetSteps = Math.round((elapsed * speed) / dt);
-        const maxSteps = 5000; // cap to prevent freezing
-        const steps = Math.min(targetSteps, maxSteps);
+        const elapsed = Math.min((now - lastTime) / 1000, 0.1); // cap elapsed to 100ms
+        stepDeficit += (elapsed * speed) / dt;
+        const maxStepsPerFrame = 1000;
+        const steps = Math.min(Math.round(stepDeficit), maxStepsPerFrame);
+        stepDeficit -= steps;
+        // Discard excess deficit to prevent unbounded accumulation
+        if (stepDeficit > maxStepsPerFrame * 3) stepDeficit = 0;
         if (steps > 0) {
           solver.step(steps);
           updateFromSolver();
@@ -122,7 +126,7 @@ export function CircuitCanvas() {
         fluids: circuit.fluids,
         portStates,
         componentStates,
-        portIndexMap: portIndexMap(),
+        portIndexMap: portIndexMapCached,
         selectedComponentIds: ui.selectedComponentIds,
         selectedConnectionIds: ui.selectedConnectionIds,
         cameraX: ui.cameraX,
@@ -145,7 +149,7 @@ export function CircuitCanvas() {
     return () => cancelAnimationFrame(animFrameRef.current);
   }, [
     circuit, running, solver, speed, portStates, componentStates,
-    simParams, ui, portIndexMap, updateFromSolver,
+    simParams, ui, portIndexMapCached, updateFromSolver,
   ]);
 
   // Mouse handlers

@@ -27,11 +27,18 @@ export function updatePressureSource(
   const pressure = comp.params.pressure ?? 150e5; // default 150 bar
   const port = ports[portIdx];
 
+  // Ramp over several time steps at startup to avoid exciting high-frequency oscillations
+  const rampSteps = comp.params.ramp_steps ?? 20;
+  const rampCount = (comp.state.ramp_count ?? 0);
+  const rampFactor = rampCount >= rampSteps ? 1.0 : rampCount / rampSteps;
+  const p_eff = P_ATM + (pressure - P_ATM) * rampFactor;
+  comp.state.ramp_count = rampCount + 1;
+
   // Near-zero impedance (ideal pressure source)
   const Zc = 1e3; // small but non-zero for numerical stability
-  port.c = 2 * pressure - (port.c || pressure);
+  port.c = 2 * p_eff - (port.c || p_eff);
   port.Zc = Zc;
-  port.p = pressure;
+  port.p = p_eff;
   // q is determined by connected component
 }
 
@@ -70,17 +77,19 @@ export function updateTlmLine(
   const fluid = fluids[fluidId] || fluids[0];
   const volume = comp.params.volume ?? 1e-6; // 1 mL default
 
-  const p_avg = 0.5 * (p1.p + p2.p);
-  const beta = effectiveBulkModulus(p_avg, fluid, params);
+  // Use persistent internal pressure state instead of averaging port pressures
+  let p_internal = comp.state.p_internal ?? P_ATM;
+  const beta = effectiveBulkModulus(p_internal, fluid, params);
   const Zc = (beta * params.dt) / (2 * volume);
 
   // Pressure update from net flow
   const q_net = p1.q + p2.q; // positive = into volume
-  const p_new = p_avg + (beta * params.dt / volume) * q_net;
+  p_internal += (beta * params.dt / volume) * q_net;
+  comp.state.p_internal = p_internal;
 
-  p1.c = p_new + Zc * p1.q;
+  p1.c = p_internal + Zc * p1.q;
   p1.Zc = Zc;
-  p2.c = p_new + Zc * p2.q;
+  p2.c = p_internal + Zc * p2.q;
   p2.Zc = Zc;
 }
 

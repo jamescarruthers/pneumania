@@ -42,7 +42,7 @@ export function effectiveDensity(
   const p_safe = Math.max(p, fluid.p_vapour);
   const x_air =
     fluid.x_air_0 * Math.pow(params.p_atm / p_safe, 1.0 / fluid.kappa);
-  const rho_air = 1.225 * (p_safe / params.p_atm);
+  const rho_air = 1.225 * Math.pow(p_safe / params.p_atm, 1.0 / fluid.kappa);
   return fluid.rho_base * (1.0 - x_air) + rho_air * x_air;
 }
 

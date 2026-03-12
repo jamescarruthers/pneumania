@@ -1,0 +1,118 @@
+import type { FluidDef } from '../solver/types';
+
+export const FLUID_PRESETS: Record<string, Omit<FluidDef, 'id'>> = {
+  iso_vg_32: {
+    fluid_type: 'LIQUID',
+    beta_base: 1.5e9,
+    rho_base: 857,
+    nu: 32e-6,
+    x_air_0: 0.01,
+    kappa: 1.2,
+    p_vapour: 3000,
+    gamma: 0,
+    molar_mass: 0,
+    henry_coeff: 0,
+    label: 'ISO VG 32 Oil',
+  },
+  iso_vg_46: {
+    fluid_type: 'LIQUID',
+    beta_base: 1.6e9,
+    rho_base: 861,
+    nu: 46e-6,
+    x_air_0: 0.01,
+    kappa: 1.2,
+    p_vapour: 3000,
+    gamma: 0,
+    molar_mass: 0,
+    henry_coeff: 0,
+    label: 'ISO VG 46 Oil',
+  },
+  iso_vg_68: {
+    fluid_type: 'LIQUID',
+    beta_base: 1.7e9,
+    rho_base: 868,
+    nu: 68e-6,
+    x_air_0: 0.01,
+    kappa: 1.2,
+    p_vapour: 3000,
+    gamma: 0,
+    molar_mass: 0,
+    henry_coeff: 0,
+    label: 'ISO VG 68 Oil',
+  },
+  water: {
+    fluid_type: 'LIQUID',
+    beta_base: 2.2e9,
+    rho_base: 998,
+    nu: 1.0e-6,
+    x_air_0: 0.02,
+    kappa: 1.0,
+    p_vapour: 2340,
+    gamma: 0,
+    molar_mass: 0,
+    henry_coeff: 0,
+    label: 'Water',
+  },
+  water_glycol: {
+    fluid_type: 'LIQUID',
+    beta_base: 1.9e9,
+    rho_base: 1050,
+    nu: 20e-6,
+    x_air_0: 0.015,
+    kappa: 1.1,
+    p_vapour: 2000,
+    gamma: 0,
+    molar_mass: 0,
+    henry_coeff: 0,
+    label: 'Water-Glycol (HFC)',
+  },
+  nitrogen: {
+    fluid_type: 'GAS',
+    beta_base: 0,
+    rho_base: 1.165,
+    nu: 15e-6,
+    x_air_0: 0,
+    kappa: 1.4,
+    p_vapour: 0,
+    gamma: 1.4,
+    molar_mass: 0.028,
+    henry_coeff: 0,
+    label: 'Nitrogen',
+  },
+  air: {
+    fluid_type: 'GAS',
+    beta_base: 0,
+    rho_base: 1.225,
+    nu: 15e-6,
+    x_air_0: 0,
+    kappa: 1.4,
+    p_vapour: 0,
+    gamma: 1.4,
+    molar_mass: 0.029,
+    henry_coeff: 0,
+    label: 'Air',
+  },
+  lhm_plus: {
+    fluid_type: 'LIQUID',
+    beta_base: 1.4e9,
+    rho_base: 1008,
+    nu: 10e-6,
+    x_air_0: 0.01,
+    kappa: 1.15,
+    p_vapour: 2500,
+    gamma: 0,
+    molar_mass: 0,
+    henry_coeff: 0,
+    label: 'LHM+ (Citroën mineral fluid)',
+  },
+};
+
+export function createFluidDef(preset: string, id: number): FluidDef {
+  const p = FLUID_PRESETS[preset];
+  if (!p) throw new Error(`Unknown fluid preset: ${preset}`);
+  return { ...p, id };
+}
+
+export function getDefaultFluid(): FluidDef {
+  return { ...FLUID_PRESETS.iso_vg_46, id: 0 };
+}

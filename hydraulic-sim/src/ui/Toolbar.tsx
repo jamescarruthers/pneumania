@@ -22,6 +22,15 @@ export function Toolbar() {
     useSimulationStore.getState().updateFromSolver();
   };
 
+  const handlePlayPause = () => {
+    // Auto-compile before starting if no compiled circuit exists
+    if (!running && !solver.getCompiledCircuit()) {
+      solver.init(circuit);
+      useSimulationStore.getState().updateFromSolver();
+    }
+    togglePlayPause();
+  };
+
   const handleLoadExample = (idx: number) => {
     if (running) return;
     const example = EXAMPLE_CIRCUITS[idx];
@@ -75,7 +84,7 @@ export function Toolbar() {
         </button>
         <button
           style={{ ...styles.button, ...(running ? styles.activeButton : {}) }}
-          onClick={togglePlayPause}
+          onClick={handlePlayPause}
           title={running ? 'Pause' : 'Play'}
         >
           {running ? 'Pause' : 'Play'}

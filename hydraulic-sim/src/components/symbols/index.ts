@@ -906,21 +906,37 @@ export function getPortWorldPositions(
   cx: number,
   cy: number,
   ports: Array<{ id: string; side: string; offset: number }>,
-  _rotation: number = 0
+  rotation: number = 0
 ): PortPosition[] {
   const size = COMPONENT_SIZES[type] ?? { width: 50, height: 30 };
   const hw = size.width / 2;
   const hh = size.height / 2;
 
   return ports.map((p) => {
-    let px = cx;
-    let py = cy;
+    // Compute port position in local (unrotated) coordinates relative to center
+    let lx = 0;
+    let ly = 0;
     switch (p.side) {
-      case 'left':   px = cx - hw - 6; py = cy - hh + p.offset * size.height; break;
-      case 'right':  px = cx + hw + 6; py = cy - hh + p.offset * size.height; break;
-      case 'top':    px = cx - hw + p.offset * size.width; py = cy - hh - 8; break;
-      case 'bottom': px = cx - hw + p.offset * size.width; py = cy + hh + 8; break;
+      case 'left':   lx = -hw - 6; ly = -hh + p.offset * size.height; break;
+      case 'right':  lx = hw + 6;  ly = -hh + p.offset * size.height; break;
+      case 'top':    lx = -hw + p.offset * size.width; ly = -hh - 8; break;
+      case 'bottom': lx = -hw + p.offset * size.width; ly = hh + 8; break;
     }
-    return { id: p.id, x: px, y: py };
+
+    // Apply rotation around component center
+    let rx = lx;
+    let ry = ly;
+    if (rotation === 90) {
+      rx = -ly;
+      ry = lx;
+    } else if (rotation === 180) {
+      rx = -lx;
+      ry = -ly;
+    } else if (rotation === 270) {
+      rx = ly;
+      ry = -lx;
+    }
+
+    return { id: p.id, x: cx + rx, y: cy + ry };
   });
 }

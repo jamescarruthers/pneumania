@@ -341,7 +341,8 @@ export function updateDcv43(
   const areaMax = comp.params.area_max ?? 1e-4;
   const overlap = comp.params.overlap ?? 0.0;
   const responseTime = comp.params.response_time ?? 0.02;
-  const commandedSpool = comp.params.spool_position ?? 0;
+  // Use signal input from connected controller if available, else fall back to static param
+  const commandedSpool = comp.state.signal_input ?? comp.params.spool_position ?? 0;
 
   // Spool dynamics
   let spool = comp.state.actual_spool ?? 0;
@@ -414,7 +415,8 @@ export function updateDcv32(
   const Cd = comp.params.Cd ?? 0.65;
   const areaMax = comp.params.area_max ?? 1e-4;
   const responseTime = comp.params.response_time ?? 0.02;
-  const commandedSpool = comp.params.spool_position ?? 0;
+  // Use signal input from connected controller if available, else fall back to static param
+  const commandedSpool = comp.state.signal_input ?? comp.params.spool_position ?? 0;
 
   let spool = comp.state.actual_spool ?? 0;
   spool += (params.dt / responseTime) * (commandedSpool - spool);

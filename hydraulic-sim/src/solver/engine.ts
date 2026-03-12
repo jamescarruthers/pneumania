@@ -32,11 +32,19 @@ export interface CompiledConnection {
   Zc: number;
 }
 
+export interface SignalRoute {
+  sourceComponentId: string;
+  sourceKey: string;       // state key to read (e.g. 'spool_position' or 'value')
+  targetComponentId: string;
+  targetKey: string;       // state key to write (e.g. 'signal_input')
+}
+
 export interface CompiledCircuit {
   fluids: FluidDef[];
   ports: PortState[];
   portsPrev: PortState[];
   connections: CompiledConnection[];
+  signalRoutes: SignalRoute[];
   components: ComponentInstance[];
   cComponents: ComponentInstance[];
   qComponents: ComponentInstance[];
@@ -100,6 +108,15 @@ export class TLMSolverEngine implements Solver {
     // Pass 4: S-type components
     for (const comp of c.sComponents) {
       this.updateSType(comp);
+    }
+
+    // Pass 4b: Signal routing — propagate S-type outputs to Q-type inputs
+    for (const route of c.signalRoutes) {
+      const src = c.components.find((x) => x.id === route.sourceComponentId);
+      const tgt = c.components.find((x) => x.id === route.targetComponentId);
+      if (src && tgt) {
+        tgt.state[route.targetKey] = src.state[route.sourceKey] ?? 0;
+      }
     }
 
     // Pass 5: Swap buffers
@@ -318,8 +335,24 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
   const ports: PortState[] = Array.from({ length: portIndex }, createDefaultPort);
   const portsPrev: PortState[] = Array.from({ length: portIndex }, createDefaultPort);
 
-  // Compile connections
+  // Build port type lookup: "componentId:portId" -> PortType
+  const portTypeLookup = new Map<string, string>();
+  for (const compDef of def.components) {
+    for (const portDef of compDef.ports) {
+      portTypeLookup.set(`${compDef.id}:${portDef.id}`, portDef.type);
+    }
+  }
+
+  // Signal source key for each S-type component type
+  const signalSourceKey: Record<string, string> = {
+    PUSH_BUTTON: 'spool_position',
+    TOGGLE_SWITCH: 'spool_position',
+    SLIDER_CONTROL: 'value',
+  };
+
+  // Compile connections — separate signal routes from TLM connections
   const connections: CompiledConnection[] = [];
+  const signalRoutes: SignalRoute[] = [];
   for (const connDef of def.connections) {
     const fromMap = componentPortMap.get(connDef.from.component);
     const toMap = componentPortMap.get(connDef.to.component);
@@ -327,6 +360,39 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     const portA = fromMap.get(connDef.from.port);
     const portB = toMap.get(connDef.to.port);
     if (portA === undefined || portB === undefined) continue;
+
+    // Check if either end is a signal port
+    const fromType = portTypeLookup.get(`${connDef.from.component}:${connDef.from.port}`);
+    const toType = portTypeLookup.get(`${connDef.to.component}:${connDef.to.port}`);
+    if (fromType === 'signal' || toType === 'signal') {
+      // Determine source (S-type) and target (Q-type) components
+      const fromComp = def.components.find((c) => c.id === connDef.from.component);
+      const toComp = def.components.find((c) => c.id === connDef.to.component);
+      if (fromComp && toComp) {
+        const fromClass = COMPONENT_TLM_CLASS[fromComp.type] || 'Q';
+        const toClass = COMPONENT_TLM_CLASS[toComp.type] || 'Q';
+        // Route signal from S-type to Q-type (or other direction if wired backwards)
+        let srcId: string, tgtId: string, srcType: string;
+        if (fromClass === 'S') {
+          srcId = fromComp.id;
+          tgtId = toComp.id;
+          srcType = fromComp.type;
+        } else if (toClass === 'S') {
+          srcId = toComp.id;
+          tgtId = fromComp.id;
+          srcType = toComp.type;
+        } else {
+          continue; // Neither end is an S-type; skip
+        }
+        signalRoutes.push({
+          sourceComponentId: srcId,
+          sourceKey: signalSourceKey[srcType] ?? 'spool_position',
+          targetComponentId: tgtId,
+          targetKey: 'signal_input',
+        });
+      }
+      continue; // Don't create a TLM connection for signal wires
+    }
 
     const fluidId = connDef.line_params.fluid_id ?? def.default_fluid_id ?? 0;
     const fluid = fluids[fluidId] || fluids[0];
@@ -367,6 +433,7 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     ports,
     portsPrev,
     connections,
+    signalRoutes,
     components,
     cComponents,
     qComponents,

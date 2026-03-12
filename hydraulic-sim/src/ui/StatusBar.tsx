@@ -4,13 +4,12 @@ import { useCircuitStore } from '../store/circuitStore';
 export function StatusBar() {
   const running = useSimulationStore((s) => s.running);
   const simParams = useSimulationStore((s) => s.simParams);
-  const backend = useSimulationStore((s) => s.solverBackend);
   const circuit = useCircuitStore((s) => s.circuit);
 
   return (
     <div style={styles.bar}>
       <span style={styles.item}>
-        Solver: {backend.toUpperCase()} {running ? '▶' : '⏸'}
+        Solver: JS {running ? '▶' : '⏸'}
       </span>
       <span style={styles.item}>
         Components: {circuit.components.length}

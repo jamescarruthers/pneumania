@@ -29,7 +29,7 @@ export function updatePressureSource(
 
   // Near-zero impedance (ideal pressure source)
   const Zc = 1e3; // small but non-zero for numerical stability
-  port.c = 2 * pressure - (port.c || pressure);
+  port.c = 2 * pressure - (port.c ?? pressure);
   port.Zc = Zc;
   port.p = pressure;
   // q is determined by connected component
@@ -49,7 +49,7 @@ export function updateTank(
   const port = ports[portIdx];
 
   const Zc = 1e3;
-  port.c = 2 * pressure - (port.c || pressure);
+  port.c = 2 * pressure - (port.c ?? pressure);
   port.Zc = Zc;
   port.p = pressure;
 }

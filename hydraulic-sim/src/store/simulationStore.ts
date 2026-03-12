@@ -11,7 +11,6 @@ interface SimulationState {
   simParams: SimParams;
   portStates: PortState[];
   componentStates: Map<string, Record<string, number>>;
-  solverBackend: 'js' | 'webgpu' | 'wasm';
   stepsPerSecond: number;
 
   // Actions
@@ -21,7 +20,6 @@ interface SimulationState {
   stepOnce: () => void;
   reset: () => void;
   setSpeed: (speed: SimSpeed) => void;
-  setSolverBackend: (backend: 'js' | 'webgpu' | 'wasm') => void;
   updateFromSolver: () => void;
   setMouseForce: (componentId: string, force: number) => void;
   clearMouseForce: (componentId: string) => void;
@@ -34,7 +32,6 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   simParams: { ...DEFAULT_SIM_PARAMS },
   portStates: [],
   componentStates: new Map(),
-  solverBackend: 'js',
   stepsPerSecond: 0,
 
   play: () => set({ running: true }),
@@ -56,8 +53,6 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   },
 
   setSpeed: (speed) => set({ speed }),
-
-  setSolverBackend: (backend) => set({ solverBackend: backend }),
 
   updateFromSolver: () => {
     const { solver } = get();

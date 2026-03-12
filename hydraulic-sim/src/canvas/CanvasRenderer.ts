@@ -191,7 +191,15 @@ function drawConnection(
     const portIdx = state.portIndexMap.get(portKey);
     if (portIdx !== undefined && state.portStates[portIdx]) {
       const flow = state.portStates[portIdx].q;
-      drawFlowArrows(ctx, fromPort.x, fromPort.y, toPort.x, toPort.y, flow, state.time, lineColour);
+      // Draw flow arrows along each segment of the routed connection path
+      const points = [
+        { x: fromPort.x, y: fromPort.y },
+        ...conn.waypoints,
+        { x: toPort.x, y: toPort.y },
+      ];
+      for (let i = 0; i < points.length - 1; i++) {
+        drawFlowArrows(ctx, points[i].x, points[i].y, points[i + 1].x, points[i + 1].y, flow, state.time, lineColour);
+      }
     }
   }
 

@@ -196,7 +196,7 @@ export function createMeterOutCircuit(): CircuitDefinition {
         position: { x: 300, y: 60 },
         rotation: 0,
         params: { pressure: 101325 },
-        ports: [{ id: 'out', type: 'hydraulic', side: 'left', offset: 0.5 }],
+        ports: [{ id: 'out', type: 'hydraulic', side: 'top', offset: 0.5 }],
       },
     ],
     connections: [
@@ -394,7 +394,7 @@ export function createSimpleOrificeCircuit(): CircuitDefinition {
         position: { x: 200, y: 0 },
         rotation: 0,
         params: { pressure: 101325 },
-        ports: [{ id: 'out', type: 'hydraulic', side: 'left', offset: 0.5 }],
+        ports: [{ id: 'out', type: 'hydraulic', side: 'top', offset: 0.5 }],
       },
     ],
     connections: [

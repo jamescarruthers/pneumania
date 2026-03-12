@@ -3,7 +3,7 @@
  * Handles pan/zoom, component placement, port connection, piston drag.
  */
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useMemo } from 'react';
 import { useCircuitStore } from '../store/circuitStore';
 import { useSimulationStore } from '../store/simulationStore';
 import { useUIStore } from '../store/uiStore';
@@ -55,8 +55,8 @@ export function CircuitCanvas() {
     [ui.zoom, ui.cameraX, ui.cameraY]
   );
 
-  // Build port index map for rendering
-  const portIndexMap = useCallback(() => {
+  // Build port index map for rendering (memoized)
+  const portIndexMap = useMemo(() => {
     const map = new Map<string, number>();
     let idx = 0;
     for (const comp of circuit.components) {
@@ -76,6 +76,7 @@ export function CircuitCanvas() {
     if (!ctx) return;
 
     let lastTime = performance.now();
+    let lastUpdateTime = 0;
 
     const loop = (now: number) => {
       // Resize
@@ -98,7 +99,11 @@ export function CircuitCanvas() {
         const steps = Math.min(targetSteps, maxSteps);
         if (steps > 0) {
           solver.step(steps);
-          updateFromSolver();
+          // Throttle store updates to ~30fps to reduce React re-renders
+          if (now - lastUpdateTime >= 33) {
+            updateFromSolver();
+            lastUpdateTime = now;
+          }
         }
       }
       lastTime = now;
@@ -110,7 +115,7 @@ export function CircuitCanvas() {
         fluids: circuit.fluids,
         portStates,
         componentStates,
-        portIndexMap: portIndexMap(),
+        portIndexMap,
         selectedComponentIds: ui.selectedComponentIds,
         selectedConnectionIds: ui.selectedConnectionIds,
         cameraX: ui.cameraX,

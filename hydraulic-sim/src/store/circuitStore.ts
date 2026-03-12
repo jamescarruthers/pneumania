@@ -50,7 +50,7 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
     const comp: ComponentDef = {
       id,
       type,
-      label: type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).toLowerCase(),
+      label: type.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
       position: { x, y },
       rotation: 0,
       params: getDefaultParams(type),
@@ -135,6 +135,17 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
 
     // Prevent self-connection
     if (from.component === to.component) return null;
+
+    // Validate port type compatibility
+    const fromComp = state.circuit.components.find((c) => c.id === from.component);
+    const toComp = state.circuit.components.find((c) => c.id === to.component);
+    if (fromComp && toComp) {
+      const fromPortDef = fromComp.ports.find((p) => p.id === from.port);
+      const toPortDef = toComp.ports.find((p) => p.id === to.port);
+      if (fromPortDef && toPortDef && fromPortDef.type !== toPortDef.type) {
+        return null; // Incompatible port types
+      }
+    }
 
     const id = uuid();
     const conn: ConnectionDef = {

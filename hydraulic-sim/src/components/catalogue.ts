@@ -91,7 +91,6 @@ export const COMPONENT_GROUPS = [
     items: [
       { type: 'DOUBLE_ACTING_CYLINDER', label: 'Double-Acting Cylinder' },
       { type: 'SINGLE_ACTING_CYLINDER', label: 'Single-Acting Cylinder' },
-      { type: 'LINKED_CYLINDERS', label: 'Linked Cylinders' },
     ],
   },
   {

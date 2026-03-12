@@ -906,11 +906,15 @@ export function getPortWorldPositions(
   cx: number,
   cy: number,
   ports: Array<{ id: string; side: string; offset: number }>,
-  _rotation: number = 0
+  rotation: number = 0
 ): PortPosition[] {
   const size = COMPONENT_SIZES[type] ?? { width: 50, height: 30 };
   const hw = size.width / 2;
   const hh = size.height / 2;
+
+  const angleRad = (rotation * Math.PI) / 180;
+  const cosA = Math.cos(angleRad);
+  const sinA = Math.sin(angleRad);
 
   return ports.map((p) => {
     let px = cx;
@@ -921,6 +925,15 @@ export function getPortWorldPositions(
       case 'top':    px = cx - hw + p.offset * size.width; py = cy - hh - 8; break;
       case 'bottom': px = cx - hw + p.offset * size.width; py = cy + hh + 8; break;
     }
+
+    // Rotate around component center if rotation is non-zero
+    if (rotation !== 0) {
+      const dx = px - cx;
+      const dy = py - cy;
+      px = cx + dx * cosA - dy * sinA;
+      py = cy + dx * sinA + dy * cosA;
+    }
+
     return { id: p.id, x: px, y: py };
   });
 }

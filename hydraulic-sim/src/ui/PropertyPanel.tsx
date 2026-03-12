@@ -95,7 +95,7 @@ export function PropertyPanel() {
 
 function getUnitForParam(key: string): string {
   if (key.includes('pressure') || key === 'p_vapour' || key === 'p_external') return 'Pa';
-  if (key.includes('diameter') || key.includes('length') || key.includes('stroke') || key === 'bore' || key === 'R_') return 'm';
+  if (key.includes('diameter') || key.includes('length') || key.includes('stroke') || key === 'bore' || key.startsWith('R_')) return 'm';
   if (key.includes('mass')) return 'kg';
   if (key.includes('force')) return 'N';
   if (key.includes('viscous') || key === 'damping') return 'N·s/m';

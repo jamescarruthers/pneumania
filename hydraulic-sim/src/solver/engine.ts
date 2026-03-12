@@ -320,8 +320,9 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     const portB = toMap.get(connDef.to.port);
     if (portA === undefined || portB === undefined) continue;
 
-    const fluidId = connDef.line_params.fluid_id ?? def.default_fluid_id ?? 0;
-    const fluid = fluids[fluidId] || fluids[0];
+    const rawFluidId = connDef.line_params.fluid_id ?? def.default_fluid_id ?? 0;
+    const fluidId = (rawFluidId >= 0 && rawFluidId < fluids.length) ? rawFluidId : 0;
+    const fluid = fluids[fluidId];
     const length = Math.max(connDef.line_params.length, 0.05); // min 50mm
     const diameter = connDef.line_params.inner_diameter || 0.01;
     const area = Math.PI * diameter * diameter * 0.25;

@@ -17,6 +17,7 @@ export function convertPressure(value: number, from: PressureUnit, to: PressureU
     case 'psi': pa = value * 6894.757; break;
     case 'MPa': pa = value * 1e6; break;
     case 'kPa': pa = value * 1e3; break;
+    default: throw new Error(`Unknown pressure unit: ${from}`);
   }
   // Convert from Pa to target
   switch (to) {
@@ -25,6 +26,7 @@ export function convertPressure(value: number, from: PressureUnit, to: PressureU
     case 'psi': return pa / 6894.757;
     case 'MPa': return pa / 1e6;
     case 'kPa': return pa / 1e3;
+    default: throw new Error(`Unknown pressure unit: ${to}`);
   }
 }
 
@@ -34,11 +36,13 @@ export function convertFlow(value: number, from: FlowUnit, to: FlowUnit): number
     case 'm3/s': m3s = value; break;
     case 'L/min': m3s = value / 60000; break;
     case 'gal/min': m3s = value * 6.309e-5; break;
+    default: throw new Error(`Unknown flow unit: ${from}`);
   }
   switch (to) {
     case 'm3/s': return m3s;
     case 'L/min': return m3s * 60000;
     case 'gal/min': return m3s / 6.309e-5;
+    default: throw new Error(`Unknown flow unit: ${to}`);
   }
 }
 
@@ -49,12 +53,14 @@ export function convertLength(value: number, from: LengthUnit, to: LengthUnit): 
     case 'mm': m = value / 1000; break;
     case 'cm': m = value / 100; break;
     case 'in': m = value * 0.0254; break;
+    default: throw new Error(`Unknown length unit: ${from}`);
   }
   switch (to) {
     case 'm': return m;
     case 'mm': return m * 1000;
     case 'cm': return m * 100;
     case 'in': return m / 0.0254;
+    default: throw new Error(`Unknown length unit: ${to}`);
   }
 }
 

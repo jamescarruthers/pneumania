@@ -3,8 +3,9 @@ import type { ComponentType, PortDef } from '../solver/types';
 export function getDefaultPorts(type: ComponentType): PortDef[] {
   switch (type) {
     case 'PRESSURE_SOURCE':
-    case 'TANK':
       return [{ id: 'out', type: 'hydraulic', side: 'right', offset: 0.5 }];
+    case 'TANK':
+      return [{ id: 'out', type: 'hydraulic', side: 'top', offset: 0.5 }];
 
     case 'DOUBLE_ACTING_CYLINDER':
       return [

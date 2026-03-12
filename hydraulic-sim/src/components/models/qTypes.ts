@@ -113,8 +113,10 @@ export function updateSingleActingCylinder(
   const F_atm = -P_ATM * A_rod;
   const F_ext = externalForce + (comp.params.external_force ?? 0);
 
+  // Semi-implicit: include spring stiffness in denominator for stability
   const hydraulicStiffness = Zc_A * A_cap * A_cap;
-  const denom = mass / params.dt + hydraulicStiffness + frictionViscous;
+  const springStiffness = springRate * params.dt;
+  const denom = mass / params.dt + hydraulicStiffness + frictionViscous + springStiffness;
   let v_new = (mass * velocity / params.dt + c_A * A_cap + F_spring + F_atm + F_ext) / denom;
 
   let x_new = position + params.dt * 0.5 * (velocity + v_new);
@@ -164,10 +166,15 @@ export function updateOrifice(
     const dp = (c1 - c2) - (Zc1 + Zc2) * q;
     const q_target = orificeFlow(dp, Cd, area, fluid, Math.max(p_avg, P_ATM), params);
     const rho = effectiveDensity(Math.max(p_avg, P_ATM), fluid, params);
-    // Jacobian approximation
-    const dq_ddp = Math.abs(dp) > 100
+    // Jacobian approximation — blended to match the flow equation's smooth transition
+    const dp_transition = 100.0;
+    const blend = Math.min(Math.abs(dp) / dp_transition, 1.0);
+    const D_h = Math.sqrt((4.0 * area) / Math.PI);
+    const dq_ddp_lam = (Cd * area * area) / (32 * rho * fluid.nu * D_h);
+    const dq_ddp_turb = Math.abs(dp) > 1
       ? Cd * area / Math.sqrt(2 * rho * Math.abs(dp))
-      : Cd * area * area / (32 * rho * fluid.nu * Math.sqrt(4 * area / Math.PI));
+      : dq_ddp_lam;
+    const dq_ddp = dq_ddp_lam * (1.0 - blend) + dq_ddp_turb * blend;
     const f = q - q_target;
     const fp = 1 + (Zc1 + Zc2) * dq_ddp;
     q = q - f / Math.max(fp, 1e-10);
@@ -181,7 +188,6 @@ export function updateOrifice(
   p2.p = p_2;
   p2.q = q;  // flow into port 2
 
-  if (!comp.state) comp.state = {};
   comp.state.q_prev = q;
 }
 
@@ -212,23 +218,53 @@ export function updateCheckValve(
   const c2 = p_out.c;
   const Zc2 = p_out.Zc;
 
-  const dp = c1 - c2;
-  const p_avg = 0.5 * (c1 + c2);
+  const Zc_sum = Zc1 + Zc2;
+  const p_avg = Math.max(0.5 * (c1 + c2), P_ATM);
+  const rho = effectiveDensity(p_avg, fluid, params);
 
-  let q: number;
-  if (dp < crackingPressure) {
-    // Closed
-    q = leakageFlow * Math.sign(dp);
-  } else if (dp < fullOpenPressure) {
-    const fraction = (dp - crackingPressure) / (fullOpenPressure - crackingPressure);
-    const areaEff = fraction * areaMax;
-    q = orificeFlow(dp - (Zc1 + Zc2) * leakageFlow, Cd, areaEff, fluid, Math.max(p_avg, P_ATM), params);
-  } else {
-    q = orificeFlow(dp, Cd, areaMax, fluid, Math.max(p_avg, P_ATM), params);
+  // Newton-Raphson iteration (like the orifice model)
+  let q = comp.state?.q_prev ?? 0;
+  for (let iter = 0; iter < 3; iter++) {
+    const dp = (c1 - c2) - Zc_sum * q;
+
+    let q_target: number;
+    let areaEff: number;
+    if (dp < crackingPressure) {
+      q_target = leakageFlow * Math.sign(dp);
+    } else if (dp < fullOpenPressure) {
+      const fraction = (dp - crackingPressure) / (fullOpenPressure - crackingPressure);
+      areaEff = fraction * areaMax;
+      q_target = orificeFlow(dp, Cd, areaEff, fluid, p_avg, params);
+    } else {
+      areaEff = areaMax;
+      q_target = orificeFlow(dp, Cd, areaEff, fluid, p_avg, params);
+    }
+
+    // Jacobian: dq_target/ddp
+    let dq_ddp: number;
+    if (dp < crackingPressure) {
+      dq_ddp = 0;
+    } else {
+      const a = dp < fullOpenPressure
+        ? ((dp - crackingPressure) / (fullOpenPressure - crackingPressure)) * areaMax
+        : areaMax;
+      const dp_transition = 100.0;
+      const blend = Math.min(Math.abs(dp) / dp_transition, 1.0);
+      const D_h = Math.sqrt((4.0 * a) / Math.PI);
+      const dq_ddp_lam = (Cd * a * a) / (32 * rho * fluid.nu * D_h);
+      const dq_ddp_turb = Math.abs(dp) > 1
+        ? Cd * a / Math.sqrt(2 * rho * Math.abs(dp))
+        : dq_ddp_lam;
+      dq_ddp = dq_ddp_lam * (1.0 - blend) + dq_ddp_turb * blend;
+    }
+
+    const f = q - q_target;
+    const fp = 1 + Zc_sum * dq_ddp;
+    q = q - f / Math.max(fp, 1e-10);
   }
 
   // Ensure no reverse flow (beyond leakage)
-  if (q < 0) q = leakageFlow * Math.sign(dp);
+  if (q < 0) q = leakageFlow * Math.sign((c1 - c2) - Zc_sum * q);
 
   const p_1 = c1 - Zc1 * q;
   const p_2 = c2 + Zc2 * q;
@@ -237,6 +273,44 @@ export function updateCheckValve(
   p_in.q = -q;
   p_out.p = p_2;
   p_out.q = q;
+
+  comp.state.q_prev = q;
+}
+
+/**
+ * Solve orifice flow with TLM impedance coupling using 2 Newton-Raphson iterations.
+ * Used by DCV, one-way flow control, and other multi-path Q-type components.
+ */
+function solveOrificeFlowNR(
+  c1: number,
+  Zc1: number,
+  c2: number,
+  Zc2: number,
+  Cd: number,
+  area: number,
+  fluid: FluidDef,
+  p_avg: number,
+  params: SimParams
+): number {
+  const Zc_sum = Zc1 + Zc2;
+  const rho = effectiveDensity(p_avg, fluid, params);
+  let q = 0;
+  for (let iter = 0; iter < 2; iter++) {
+    const dp = (c1 - c2) - Zc_sum * q;
+    const q_target = orificeFlow(dp, Cd, area, fluid, p_avg, params);
+    const dp_transition = 100.0;
+    const blend = Math.min(Math.abs(dp) / dp_transition, 1.0);
+    const D_h = Math.sqrt((4.0 * area) / Math.PI);
+    const dq_ddp_lam = (Cd * area * area) / (32 * rho * fluid.nu * D_h);
+    const dq_ddp_turb = Math.abs(dp) > 1
+      ? Cd * area / Math.sqrt(2 * rho * Math.abs(dp))
+      : dq_ddp_lam;
+    const dq_ddp = dq_ddp_lam * (1.0 - blend) + dq_ddp_turb * blend;
+    const f = q - q_target;
+    const fp = 1 + Zc_sum * dq_ddp;
+    q = q - f / Math.max(fp, 1e-10);
+  }
+  return q;
 }
 
 // ============================================================
@@ -265,17 +339,17 @@ export function updateOneWayFlowControl(
   const Zc1 = p1.Zc;
   const c2 = p2.c;
   const Zc2 = p2.Zc;
-  const dp = c1 - c2;
+  const dp_wave = c1 - c2;
   const p_avg = Math.max(0.5 * (c1 + c2), P_ATM);
 
   let q: number;
-  if (dp > 0) {
+  if (dp_wave > 0) {
     // Free flow direction — check valve open
-    q = orificeFlow(dp, Cd, checkAreaMax, fluid, p_avg, params);
+    q = solveOrificeFlowNR(c1, Zc1, c2, Zc2, Cd, checkAreaMax, fluid, p_avg, params);
   } else {
     // Restricted direction
     const areaEff = orificeAreaMin + setting * (orificeAreaMax - orificeAreaMin);
-    q = orificeFlow(dp, Cd, areaEff, fluid, p_avg, params);
+    q = solveOrificeFlowNR(c1, Zc1, c2, Zc2, Cd, areaEff, fluid, p_avg, params);
   }
 
   p1.p = c1 - Zc1 * q;
@@ -362,24 +436,20 @@ export function updateDcv43(
   // Leakage when closed
   const leakArea = 1e-9;
 
-  // Solve each flow path as an orifice
+  // Solve each flow path with TLM impedance coupling (Newton-Raphson)
   const p_avg = Math.max(0.25 * (portP.c + portT.c + portA.c + portB.c), P_ATM);
 
   // P→A path
-  const dp_PA = portP.c - portA.c;
-  const q_PA = orificeFlow(dp_PA, Cd, Math.max(area_PA, leakArea), fluid, p_avg, params);
+  const q_PA = solveOrificeFlowNR(portP.c, portP.Zc, portA.c, portA.Zc, Cd, Math.max(area_PA, leakArea), fluid, p_avg, params);
 
   // B→T path
-  const dp_BT = portB.c - portT.c;
-  const q_BT = orificeFlow(dp_BT, Cd, Math.max(area_BT, leakArea), fluid, p_avg, params);
+  const q_BT = solveOrificeFlowNR(portB.c, portB.Zc, portT.c, portT.Zc, Cd, Math.max(area_BT, leakArea), fluid, p_avg, params);
 
   // P→B path
-  const dp_PB = portP.c - portB.c;
-  const q_PB = orificeFlow(dp_PB, Cd, Math.max(area_PB, leakArea), fluid, p_avg, params);
+  const q_PB = solveOrificeFlowNR(portP.c, portP.Zc, portB.c, portB.Zc, Cd, Math.max(area_PB, leakArea), fluid, p_avg, params);
 
   // A→T path
-  const dp_AT = portA.c - portT.c;
-  const q_AT = orificeFlow(dp_AT, Cd, Math.max(area_AT, leakArea), fluid, p_avg, params);
+  const q_AT = solveOrificeFlowNR(portA.c, portA.Zc, portT.c, portT.Zc, Cd, Math.max(area_AT, leakArea), fluid, p_avg, params);
 
   // Net flows at each port
   const q_P = -(q_PA + q_PB);  // out of P
@@ -432,8 +502,8 @@ export function updateDcv32(
   // A→T: open when spool → 0
   const area_AT = areaMax * Math.max(Math.min(1 - spool, 1), 0);
 
-  const q_PA = orificeFlow(portP.c - portA.c, Cd, Math.max(area_PA, leakArea), fluid, p_avg, params);
-  const q_AT = orificeFlow(portA.c - portT.c, Cd, Math.max(area_AT, leakArea), fluid, p_avg, params);
+  const q_PA = solveOrificeFlowNR(portP.c, portP.Zc, portA.c, portA.Zc, Cd, Math.max(area_PA, leakArea), fluid, p_avg, params);
+  const q_AT = solveOrificeFlowNR(portA.c, portA.Zc, portT.c, portT.Zc, Cd, Math.max(area_AT, leakArea), fluid, p_avg, params);
 
   const q_P = -q_PA;
   const q_A = q_PA - q_AT;
@@ -493,10 +563,13 @@ export function updateMassLoad(
   const externalForce = comp.params.external_force ?? 0;
 
   const velocity = comp.state.velocity ?? 0;
-  const force = port.p + gravityForce + externalForce;
+  const force = port.c + gravityForce + externalForce;
 
-  const v_new = velocity + (params.dt / mass) * force;
+  // Semi-implicit: include port impedance in denominator for stability
+  const denom = mass / params.dt + port.Zc;
+  const v_new = (mass * velocity / params.dt + force) / denom;
   port.q = v_new;
+  port.p = port.c - port.Zc * v_new;
 
   comp.state.velocity = v_new;
 }

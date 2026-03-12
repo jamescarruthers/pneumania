@@ -831,7 +831,6 @@ export function drawComponentSymbol(
   switch (type) {
     case 'DOUBLE_ACTING_CYLINDER':
     case 'SINGLE_ACTING_CYLINDER':
-    case 'LINKED_CYLINDERS':
       drawCylinderSymbol(sc);
       break;
     case 'PRESSURE_SOURCE':

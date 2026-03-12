@@ -95,7 +95,7 @@ export const FLUID_PRESETS: Record<string, Omit<FluidDef, 'id'>> = {
   lhm_plus: {
     fluid_type: 'LIQUID',
     beta_base: 1.4e9,
-    rho_base: 1008,
+    rho_base: 890,
     nu: 10e-6,
     x_air_0: 0.01,
     kappa: 1.15,

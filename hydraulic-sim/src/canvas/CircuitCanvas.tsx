@@ -18,10 +18,15 @@ export function CircuitCanvas() {
   const dragComponentRef = useRef<string | null>(null);
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0, camX: 0, camY: 0 });
-  // Runtime interaction: drag-force on cylinders
+  // Runtime interaction: drag-force on cylinders/sliders
   const isApplyingForceRef = useRef(false);
   const forceComponentRef = useRef<string | null>(null);
   const forceStartRef = useRef({ x: 0, y: 0 });
+  // Separate ref for push button hold (no drag force)
+  const isHoldingButtonRef = useRef(false);
+  const heldButtonIdRef = useRef<string | null>(null);
+  // Track in-drag slider value to avoid stale store reads
+  const sliderDragValueRef = useRef(0);
 
   const circuit = useCircuitStore((s) => s.circuit);
   const addComponent = useCircuitStore((s) => s.addComponent);
@@ -199,8 +204,8 @@ export function CircuitCanvas() {
           if (compType === 'PUSH_BUTTON') {
             // Press the button (held while mouse is down, released on mouseUp)
             setComponentState(compHit.id, 'pressed', 1);
-            isApplyingForceRef.current = true;
-            forceComponentRef.current = compHit.id;
+            isHoldingButtonRef.current = true;
+            heldButtonIdRef.current = compHit.id;
           } else if (compType === 'TOGGLE_SWITCH') {
             // Toggle between states
             const currentState = componentStates.get(compHit.id);
@@ -220,6 +225,8 @@ export function CircuitCanvas() {
             isApplyingForceRef.current = true;
             forceComponentRef.current = compHit.id;
             forceStartRef.current = world;
+            const currentState = componentStates.get(compHit.id);
+            sliderDragValueRef.current = currentState?.value ?? 0;
           } else if (
             compType === 'DOUBLE_ACTING_CYLINDER' ||
             compType === 'SINGLE_ACTING_CYLINDER'
@@ -275,10 +282,9 @@ export function CircuitCanvas() {
           if (comp.type === 'SLIDER_CONTROL') {
             // Map vertical drag to 0-1 slider value
             const dy = forceStartRef.current.y - world.y;
-            const currentState = componentStates.get(comp.id);
-            const baseValue = currentState?.value ?? 0;
             const sensitivity = 0.01; // per pixel
-            const newValue = Math.max(0, Math.min(1, baseValue + dy * sensitivity));
+            const newValue = Math.max(0, Math.min(1, sliderDragValueRef.current + dy * sensitivity));
+            sliderDragValueRef.current = newValue;
             setComponentState(comp.id, 'value', newValue);
             forceStartRef.current = world;
           } else {
@@ -314,11 +320,15 @@ export function CircuitCanvas() {
 
   const handleMouseUp = useCallback(() => {
     // Release push button when mouse is released
+    if (isHoldingButtonRef.current && heldButtonIdRef.current) {
+      setComponentState(heldButtonIdRef.current, 'pressed', 0);
+      isHoldingButtonRef.current = false;
+      heldButtonIdRef.current = null;
+    }
+    // Clear cylinder force when mouse is released
     if (isApplyingForceRef.current && forceComponentRef.current) {
       const comp = circuit.components.find((c) => c.id === forceComponentRef.current);
-      if (comp?.type === 'PUSH_BUTTON') {
-        setComponentState(comp.id, 'pressed', 0);
-      } else if (
+      if (
         comp?.type === 'DOUBLE_ACTING_CYLINDER' ||
         comp?.type === 'SINGLE_ACTING_CYLINDER'
       ) {

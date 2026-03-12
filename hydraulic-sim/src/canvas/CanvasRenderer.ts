@@ -210,7 +210,7 @@ function drawConnection(
     }
   } else {
     // Multiple segments: use cubic bezier for each segment with
-    // control points based on neighboring segment directions
+    // control points extending along the segment's dominant axis
     for (let i = 1; i < points.length; i++) {
       const p0 = points[i - 1];
       const p1 = points[i];

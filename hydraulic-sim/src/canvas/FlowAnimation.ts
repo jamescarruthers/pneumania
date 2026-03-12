@@ -36,9 +36,8 @@ function segmentControlPoints(p0: Point, p1: Point): [Point, Point] {
   }
 }
 
-/** Sample evenly-spaced points along the full bezier path */
-function sampleBezierPath(points: Point[], spacing: number): Point[] {
-  // First, densely sample all segments
+/** Densely sample points along the full bezier path */
+function sampleBezierPath(points: Point[]): Point[] {
   const dense: Point[] = [];
   const stepsPerSeg = 40;
 
@@ -49,16 +48,6 @@ function sampleBezierPath(points: Point[], spacing: number): Point[] {
       if (i > 0 && s === 0) continue;
       dense.push(bezierPoint(points[i], cp1, cp2, points[i + 1], s / stepsPerSeg));
     }
-  }
-
-  if (dense.length < 2) return dense;
-
-  // Build cumulative arc-length table
-  const arcLen: number[] = [0];
-  for (let i = 1; i < dense.length; i++) {
-    const dx = dense[i].x - dense[i - 1].x;
-    const dy = dense[i].y - dense[i - 1].y;
-    arcLen.push(arcLen[i - 1] + Math.sqrt(dx * dx + dy * dy));
   }
 
   return dense;
@@ -76,7 +65,7 @@ export function drawFlowArrows(
 
   // Sample dense points along the bezier path
   const spacing = 25;
-  const dense = sampleBezierPath(points, spacing);
+  const dense = sampleBezierPath(points);
   if (dense.length < 2) return;
 
   // Compute cumulative arc lengths

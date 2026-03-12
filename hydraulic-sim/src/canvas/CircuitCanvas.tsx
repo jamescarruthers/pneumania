@@ -228,6 +228,24 @@ export function CircuitCanvas() {
             const currentState = componentStates.get(compHit.id);
             sliderDragValueRef.current = currentState?.value ?? 0;
           } else if (
+            compType === 'DCV_4_3' ||
+            compType === 'DCV_5_3'
+          ) {
+            // 3-position DCV: cycle spool -1 → 0 → 1 → -1
+            const currentState = componentStates.get(compHit.id);
+            const current = currentState?.signal_input ?? 0;
+            const rounded = Math.round(current);
+            const next = rounded >= 1 ? -1 : rounded + 1;
+            setComponentState(compHit.id, 'signal_input', next);
+          } else if (
+            compType === 'DCV_3_2' ||
+            compType === 'DCV_5_2'
+          ) {
+            // 2-position DCV: toggle spool between 0 and 1
+            const currentState = componentStates.get(compHit.id);
+            const current = currentState?.signal_input ?? 0;
+            setComponentState(compHit.id, 'signal_input', current > 0.5 ? 0 : 1);
+          } else if (
             compType === 'DOUBLE_ACTING_CYLINDER' ||
             compType === 'SINGLE_ACTING_CYLINDER'
           ) {

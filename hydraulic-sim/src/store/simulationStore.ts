@@ -25,6 +25,7 @@ interface SimulationState {
   updateFromSolver: () => void;
   setMouseForce: (componentId: string, force: number) => void;
   clearMouseForce: (componentId: string) => void;
+  setComponentState: (componentId: string, key: string, value: number) => void;
 }
 
 export const useSimulationStore = create<SimulationState>((set, get) => ({
@@ -79,5 +80,9 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
 
   clearMouseForce: (componentId) => {
     get().solver.clearMouseForce(componentId);
+  },
+
+  setComponentState: (componentId, key, value) => {
+    get().solver.setComponentState(componentId, key, value);
   },
 }));

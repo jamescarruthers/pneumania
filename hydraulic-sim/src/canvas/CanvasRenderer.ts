@@ -175,23 +175,76 @@ function drawConnection(
   ctx.lineWidth = selected ? 3 : 2;
   ctx.setLineDash(dashPattern);
 
-  // Draw line (Manhattan routing through waypoints)
+  // Build full point list: from -> waypoints -> to
+  const points = [
+    { x: fromPort.x, y: fromPort.y },
+    ...conn.waypoints,
+    { x: toPort.x, y: toPort.y },
+  ];
+
+  // Draw bezier curve through points
   ctx.beginPath();
-  ctx.moveTo(fromPort.x, fromPort.y);
-  for (const wp of conn.waypoints) {
-    ctx.lineTo(wp.x, wp.y);
+  ctx.moveTo(points[0].x, points[0].y);
+
+  if (points.length === 2) {
+    // Direct connection: cubic bezier with control points extending
+    // along the axis of greatest separation for a smooth curve
+    const dx = points[1].x - points[0].x;
+    const dy = points[1].y - points[0].y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const tension = Math.min(dist * 0.4, 80);
+
+    // Extend control points horizontally or vertically based on dominant axis
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      ctx.bezierCurveTo(
+        points[0].x + tension, points[0].y,
+        points[1].x - tension, points[1].y,
+        points[1].x, points[1].y
+      );
+    } else {
+      ctx.bezierCurveTo(
+        points[0].x, points[0].y + Math.sign(dy) * tension,
+        points[1].x, points[1].y - Math.sign(dy) * tension,
+        points[1].x, points[1].y
+      );
+    }
+  } else {
+    // Multiple segments: use cubic bezier for each segment with
+    // control points based on neighboring segment directions
+    for (let i = 1; i < points.length; i++) {
+      const p0 = points[i - 1];
+      const p1 = points[i];
+      const dx = p1.x - p0.x;
+      const dy = p1.y - p0.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const tension = Math.min(dist * 0.4, 80);
+
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        ctx.bezierCurveTo(
+          p0.x + tension, p0.y,
+          p1.x - tension, p1.y,
+          p1.x, p1.y
+        );
+      } else {
+        ctx.bezierCurveTo(
+          p0.x, p0.y + Math.sign(dy) * tension,
+          p1.x, p1.y - Math.sign(dy) * tension,
+          p1.x, p1.y
+        );
+      }
+    }
   }
-  ctx.lineTo(toPort.x, toPort.y);
+
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Flow arrows
+  // Flow arrows along bezier curve
   if (state.running && state.showFlowArrows) {
     const portKey = `${conn.from.component}:${conn.from.port}`;
     const portIdx = state.portIndexMap.get(portKey);
     if (portIdx !== undefined && state.portStates[portIdx]) {
       const flow = state.portStates[portIdx].q;
-      drawFlowArrows(ctx, fromPort.x, fromPort.y, toPort.x, toPort.y, flow, state.time, lineColour);
+      drawFlowArrows(ctx, points, flow, state.time, lineColour);
     }
   }
 

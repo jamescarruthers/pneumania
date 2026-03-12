@@ -73,6 +73,16 @@ function runFor(solver: TLMSolverEngine, steps: number): void {
   solver.step(steps);
 }
 
+/** Derive the global port index for a component's Nth port (0-based local offset). */
+function portIndex(solver: TLMSolverEngine, componentId: string, localOffset = 0): number {
+  const circuit = solver.getCompiledCircuit();
+  if (!circuit) throw new Error('solver not initialised');
+  const comp = circuit.componentById.get(componentId);
+  if (!comp) throw new Error(`unknown component: ${componentId}`);
+  if (localOffset >= comp.portCount) throw new Error(`port offset ${localOffset} out of range for ${componentId}`);
+  return comp.portStartIndex + localOffset;
+}
+
 beforeEach(() => {
   nextId = 0;
 });
@@ -141,8 +151,8 @@ describe('Double-Acting Cylinder', () => {
   });
 
   /**
-   * A through-rod / equal-area cylinder (rod_diameter = 0, so A_cap = A_rod)
-   * with equal pressure on both sides MUST stay at its initial position.
+   * A rodless cylinder (rod_diameter = 0, so A_cap = A_rod) with equal
+   * pressure on both sides MUST stay at its initial position.
    */
   it('stays stationary with equal pressure when areas are equal (rod_diameter = 0)', () => {
     const pressure = 100e5;
@@ -592,7 +602,7 @@ describe('Pressure Source', () => {
     runFor(solver, 2000);
 
     // Source port should be near 100 bar
-    const srcPort = solver.getPortState(0); // first component, first port
+    const srcPort = solver.getPortState(portIndex(solver, src));
     expect(srcPort.p).toBeGreaterThan(90e5);
     expect(srcPort.p).toBeLessThan(110e5);
   });
@@ -641,8 +651,8 @@ describe('Orifice', () => {
     runFor(solver, 2000);
 
     // Flow through the orifice ports should be near zero
-    const portIn = solver.getPortState(1);  // orifice port 'in'
-    const portOut = solver.getPortState(2); // orifice port 'out'
+    const portIn = solver.getPortState(portIndex(solver, orifice, 0));  // orifice port 'in'
+    const portOut = solver.getPortState(portIndex(solver, orifice, 1)); // orifice port 'out'
     expect(Math.abs(portIn.q)).toBeLessThan(1e-6);
     expect(Math.abs(portOut.q)).toBeLessThan(1e-6);
   });
@@ -684,7 +694,7 @@ describe('Orifice', () => {
     runFor(solver, 2000);
 
     // Flow should be positive (from high to low pressure)
-    const portOut = solver.getPortState(2); // orifice 'out' port
+    const portOut = solver.getPortState(portIndex(solver, orifice, 1)); // orifice 'out' port
     expect(portOut.q).toBeGreaterThan(0);
   });
 });
@@ -744,7 +754,7 @@ describe('Conservation', () => {
     runFor(solver, 500);
 
     const state = solver.getComponentState(cyl);
-    const portA = solver.getPortState(1); // cylinder port A (src port is 0)
+    const portA = solver.getPortState(portIndex(solver, cyl, 0)); // cylinder port A
 
     // q_A should equal velocity * A_cap
     const expected_q = state.velocity * A_cap;
@@ -872,8 +882,8 @@ describe('DCV 4/3', () => {
 
     // In center position with overlap = 0, areas are all 0 (only leakage)
     // Flow at A and B ports should be near zero
-    const portA = solver.getPortState(4); // dcv port A
-    const portB = solver.getPortState(5); // dcv port B
+    const portA = solver.getPortState(portIndex(solver, dcv, 2)); // dcv port A
+    const portB = solver.getPortState(portIndex(solver, dcv, 3)); // dcv port B
     expect(Math.abs(portA.q)).toBeLessThan(1e-6);
     expect(Math.abs(portB.q)).toBeLessThan(1e-6);
   });
@@ -915,7 +925,7 @@ describe('Solver Infrastructure', () => {
     expect(params.time).toBeCloseTo(100 * dt, 10);
   });
 
-  it('reset restores initial state', () => {
+  it('reset zeroes state and simulation clock', () => {
     const src = uid();
     const tank = uid();
     const cyl = uid();
@@ -943,7 +953,7 @@ describe('Solver Infrastructure', () => {
             stroke_length: 0.2,
             mass: 10,
             friction_viscous: 100,
-            position: 0,
+            position: 0.08, // non-zero initial so movement is distinguishable
           },
           ports: [makePort('A'), makePort('B')],
         },
@@ -958,12 +968,13 @@ describe('Solver Infrastructure', () => {
     solver.init(circuit);
     runFor(solver, 5000);
 
-    // Position should have changed
+    // Position should have moved away from initial
     const stateBefore = solver.getComponentState(cyl);
-    expect(stateBefore.position).toBeGreaterThan(0);
+    expect(stateBefore.position).not.toBeCloseTo(0.08, 2);
 
     solver.reset();
 
+    // reset() zeroes component state (does not restore initial params)
     const stateAfter = solver.getComponentState(cyl);
     expect(stateAfter.position).toBe(0);
     expect(stateAfter.velocity).toBe(0);

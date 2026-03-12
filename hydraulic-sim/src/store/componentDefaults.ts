@@ -32,11 +32,14 @@ export function getDefaultPorts(type: ComponentType): PortDef[] {
       ];
 
     case 'DCV_4_3':
+    case 'DCV_5_2':
+    case 'DCV_5_3':
       return [
         { id: 'P', type: 'hydraulic', side: 'bottom', offset: 0.3, label: 'P' },
         { id: 'T', type: 'hydraulic', side: 'bottom', offset: 0.7, label: 'T' },
         { id: 'A', type: 'hydraulic', side: 'top', offset: 0.3, label: 'A' },
         { id: 'B', type: 'hydraulic', side: 'top', offset: 0.7, label: 'B' },
+        { id: 'control', type: 'signal', side: 'left', offset: 0.5, label: 'Ctrl' },
       ];
 
     case 'DCV_3_2':
@@ -44,6 +47,7 @@ export function getDefaultPorts(type: ComponentType): PortDef[] {
         { id: 'P', type: 'hydraulic', side: 'bottom', offset: 0.3, label: 'P' },
         { id: 'T', type: 'hydraulic', side: 'bottom', offset: 0.7, label: 'T' },
         { id: 'A', type: 'hydraulic', side: 'top', offset: 0.5, label: 'A' },
+        { id: 'control', type: 'signal', side: 'left', offset: 0.5, label: 'Ctrl' },
       ];
 
     case 'TEE_JUNCTION':
@@ -163,6 +167,8 @@ export function getDefaultParams(type: ComponentType): Record<string, number | s
       };
 
     case 'DCV_4_3':
+    case 'DCV_5_2':
+    case 'DCV_5_3':
       return {
         Cd: 0.65,
         area_max: 1e-4,

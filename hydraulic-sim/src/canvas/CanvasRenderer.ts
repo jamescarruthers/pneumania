@@ -78,14 +78,26 @@ export function renderCircuit(
       params: comp.params,
     };
 
-    drawComponentSymbol(comp.type, sc);
+    // Apply rotation transform centered on component position
+    if (comp.rotation !== 0) {
+      ctx.save();
+      ctx.translate(comp.position.x, comp.position.y);
+      ctx.rotate(comp.rotation * Math.PI / 180);
+      ctx.translate(-comp.position.x, -comp.position.y);
+      drawComponentSymbol(comp.type, sc);
+      ctx.restore();
+    } else {
+      drawComponentSymbol(comp.type, sc);
+    }
 
-    // Label
+    // Label (always drawn un-rotated below the bounding box)
     if (state.showLabels) {
+      const rotated = comp.rotation === 90 || comp.rotation === 270;
+      const labelOffset = (rotated ? size.width : size.height) / 2 + 20;
       ctx.fillStyle = '#b2bec3';
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(comp.label, comp.position.x, comp.position.y + size.height / 2 + 20);
+      ctx.fillText(comp.label, comp.position.x, comp.position.y + labelOffset);
     }
   }
 
@@ -261,8 +273,10 @@ export function hitTestComponent(
   for (let i = components.length - 1; i >= 0; i--) {
     const comp = components[i];
     const size = COMPONENT_SIZES[comp.type] ?? { width: 50, height: 30 };
-    const hw = size.width / 2 + 10;
-    const hh = size.height / 2 + 10;
+    // Swap width/height for 90° and 270° rotations
+    const rotated = comp.rotation === 90 || comp.rotation === 270;
+    const hw = (rotated ? size.height : size.width) / 2 + 10;
+    const hh = (rotated ? size.width : size.height) / 2 + 10;
     if (
       wx >= comp.position.x - hw &&
       wx <= comp.position.x + hw &&

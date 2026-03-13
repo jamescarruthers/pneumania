@@ -7,7 +7,10 @@ export function PropertyPanel() {
   const circuit = useCircuitStore((s) => s.circuit);
   const updateParams = useCircuitStore((s) => s.updateComponentParams);
   const updateLabel = useCircuitStore((s) => s.updateComponentLabel);
+  const updateConnectionDiameter = useCircuitStore((s) => s.updateConnectionDiameter);
+  const updateConnectionLength = useCircuitStore((s) => s.updateConnectionLength);
   const selectedIds = useUIStore((s) => s.selectedComponentIds);
+  const selectedConnectionIds = useUIStore((s) => s.selectedConnectionIds);
   const componentStates = useSimulationStore((s) => s.componentStates);
   const running = useSimulationStore((s) => s.running);
 
@@ -16,11 +19,67 @@ export function PropertyPanel() {
     ? circuit.components.find((c) => c.id === selectedId)
     : null;
 
+  const selectedConnId = selectedConnectionIds.size === 1 ? Array.from(selectedConnectionIds)[0] : null;
+  const conn = selectedConnId
+    ? circuit.connections.find((c) => c.id === selectedConnId)
+    : null;
+
+  if (conn) {
+    const fromComp = circuit.components.find((c) => c.id === conn.from.component);
+    const toComp = circuit.components.find((c) => c.id === conn.to.component);
+    const connLabel = `${fromComp?.label || '?'} → ${toComp?.label || '?'}`;
+
+    return (
+      <div style={styles.panel}>
+        <div style={styles.header}>Pipe Properties</div>
+        <div style={styles.section}>
+          <div style={styles.sectionTitle}>Connection</div>
+          <div style={{ ...styles.fieldLabel, padding: '2px 0 6px' }}>{connLabel}</div>
+        </div>
+        <div style={styles.section}>
+          <div style={styles.sectionTitle}>Parameters</div>
+          <div style={styles.field}>
+            <label style={styles.fieldLabel}>diameter</label>
+            <input
+              style={styles.input}
+              type="number"
+              value={conn.line_params.inner_diameter}
+              onChange={(e) => {
+                const num = parseFloat(e.target.value);
+                if (!isNaN(num) && num > 0) updateConnectionDiameter(conn.id, num);
+              }}
+              disabled={running}
+              step="0.001"
+              min="0.001"
+            />
+            <span style={styles.unit}>m</span>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.fieldLabel}>length</label>
+            <input
+              style={styles.input}
+              type="number"
+              value={conn.line_params.length}
+              onChange={(e) => {
+                const num = parseFloat(e.target.value);
+                if (!isNaN(num) && num > 0) updateConnectionLength(conn.id, num);
+              }}
+              disabled={running}
+              step="0.1"
+              min="0.01"
+            />
+            <span style={styles.unit}>m</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!comp) {
     return (
       <div style={styles.panel}>
         <div style={styles.header}>Properties</div>
-        <div style={styles.empty}>Select a component</div>
+        <div style={styles.empty}>Select a component or pipe</div>
       </div>
     );
   }

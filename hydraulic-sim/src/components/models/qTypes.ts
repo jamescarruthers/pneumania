@@ -19,7 +19,7 @@ import { orificeFlow, effectiveDensity } from '../../fluid/properties';
 export function updateDoubleActingCylinder(
   comp: ComponentInstance,
   ports: PortState[],
-  _fluids: FluidDef[],
+  fluids: FluidDef[],
   params: SimParams,
   externalForce: number = 0
 ): void {
@@ -33,6 +33,8 @@ export function updateDoubleActingCylinder(
   const stroke = comp.params.stroke_length ?? 0.2;
   const mass = comp.params.mass ?? 10;
   const frictionViscous = comp.params.friction_viscous ?? 100;
+  const capA = comp.params.cap_a ?? 0;
+  const capB = comp.params.cap_b ?? 0;
 
   const A_cap = Math.PI * bore * bore * 0.25;
   const A_rod = Math.PI * (bore * bore - rod * rod) * 0.25;
@@ -40,10 +42,41 @@ export function updateDoubleActingCylinder(
   let position = comp.state.position ?? 0;
   let velocity = comp.state.velocity ?? 0;
 
-  const c_A = portA.c;
-  const Zc_A = portA.Zc;
-  const c_B = portB.c;
-  const Zc_B = portB.Zc;
+  // Wave variables for hydraulic ports — either from external connections or
+  // from internally-modelled capped (trapped) volumes.
+  let c_A: number, Zc_A: number;
+  let c_B: number, Zc_B: number;
+
+  if (capA) {
+    // Capped port A: trapped fluid volume acts as a hydraulic spring.
+    // V_A increases with extension (positive x), so extending drops pressure.
+    const deadVol = comp.params.dead_volume_A ?? 1e-6;
+    const V_A = A_cap * position + deadVol;
+    const fluid = fluids[portA.fluid_id] || fluids[0];
+    const p_trapped = comp.state.p_cap_a ?? params.p_atm;
+    const beta = fluid.beta_base;
+    // Semi-implicit stiffness: Zc_cap = beta * dt / V
+    Zc_A = beta * params.dt / V_A;
+    c_A = p_trapped;
+  } else {
+    c_A = portA.c;
+    Zc_A = portA.Zc;
+  }
+
+  if (capB) {
+    // Capped port B: trapped fluid on the rod side.
+    // V_B decreases with extension (positive x), so extending raises pressure.
+    const deadVol = comp.params.dead_volume_B ?? 1e-6;
+    const V_B = A_rod * (stroke - position) + deadVol;
+    const fluid = fluids[portB.fluid_id] || fluids[0];
+    const p_trapped = comp.state.p_cap_b ?? params.p_atm;
+    const beta = fluid.beta_base;
+    Zc_B = beta * params.dt / V_B;
+    c_B = p_trapped;
+  } else {
+    c_B = portB.c;
+    Zc_B = portB.Zc;
+  }
 
   // Mechanical port force (from connected spring/mass)
   const F_mech = portMech ? portMech.c : 0;
@@ -75,10 +108,24 @@ export function updateDoubleActingCylinder(
   const p_A = c_A - Zc_A * q_A;
   const p_B = c_B - Zc_B * q_B;
 
-  portA.p = p_A;
-  portA.q = q_A;
-  portB.p = p_B;
-  portB.q = q_B;
+  if (capA) {
+    // Update trapped pressure for next step
+    comp.state.p_cap_a = Math.max(p_A, 0);
+    portA.p = p_A;
+    portA.q = 0;   // no external flow — port is capped
+  } else {
+    portA.p = p_A;
+    portA.q = q_A;
+  }
+
+  if (capB) {
+    comp.state.p_cap_b = Math.max(p_B, 0);
+    portB.p = p_B;
+    portB.q = 0;
+  } else {
+    portB.p = p_B;
+    portB.q = q_B;
+  }
 
   // Mechanical port: output piston velocity and reaction force
   if (portMech) {

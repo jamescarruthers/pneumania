@@ -30,6 +30,7 @@ export interface CompiledConnection {
   inner_diameter: number;
   fluid_id: number;
   Zc: number;
+  is_mechanical: boolean;
 }
 
 export interface SignalRoute {
@@ -80,21 +81,31 @@ export class TLMSolverEngine implements Solver {
     for (const conn of c.connections) {
       const a = c.portsPrev[conn.port_a];
       const b = c.portsPrev[conn.port_b];
-      const fluid = c.fluids[conn.fluid_id];
-      const p_avg = 0.5 * (a.p + b.p);
-      const area =
-        Math.PI * conn.inner_diameter * conn.inner_diameter * 0.25;
-      const ws = waveSpeed(p_avg, fluid, c.params);
-      const beta = effectiveBulkModulus(p_avg, fluid, c.params);
-      const Zc = beta / (area * ws);
-      conn.Zc = Zc;
 
-      c.ports[conn.port_a].c = b.p + Zc * b.q;
-      c.ports[conn.port_a].Zc = Zc;
-      c.ports[conn.port_a].fluid_id = conn.fluid_id;
-      c.ports[conn.port_b].c = a.p + Zc * a.q;
-      c.ports[conn.port_b].Zc = Zc;
-      c.ports[conn.port_b].fluid_id = conn.fluid_id;
+      if (conn.is_mechanical) {
+        // Mechanical: pass force (p) directly, Zc = 0.
+        // Hydraulic coupling happens inside the cylinder model, not here.
+        c.ports[conn.port_a].c = b.p;
+        c.ports[conn.port_a].Zc = 0;
+        c.ports[conn.port_b].c = a.p;
+        c.ports[conn.port_b].Zc = 0;
+      } else {
+        const fluid = c.fluids[conn.fluid_id];
+        const p_avg = 0.5 * (a.p + b.p);
+        const area =
+          Math.PI * conn.inner_diameter * conn.inner_diameter * 0.25;
+        const ws = waveSpeed(p_avg, fluid, c.params);
+        const beta = effectiveBulkModulus(p_avg, fluid, c.params);
+        const Zc = beta / (area * ws);
+        conn.Zc = Zc;
+
+        c.ports[conn.port_a].c = b.p + Zc * b.q;
+        c.ports[conn.port_a].Zc = Zc;
+        c.ports[conn.port_a].fluid_id = conn.fluid_id;
+        c.ports[conn.port_b].c = a.p + Zc * a.q;
+        c.ports[conn.port_b].Zc = Zc;
+        c.ports[conn.port_b].fluid_id = conn.fluid_id;
+      }
     }
 
     // Pass 2: C-type components
@@ -426,23 +437,41 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
       continue; // Don't create a TLM connection for signal wires
     }
 
-    const fluidId = connDef.line_params.fluid_id ?? def.default_fluid_id ?? 0;
-    const fluid = fluids[fluidId] || fluids[0];
-    const length = Math.max(connDef.line_params.length, 0.05); // min 50mm
-    const diameter = connDef.line_params.inner_diameter || 0.01;
-    const area = Math.PI * diameter * diameter * 0.25;
-    const ws = waveSpeed(params.p_atm, fluid, params);
-    const beta = effectiveBulkModulus(params.p_atm, fluid, params);
-    const Zc = beta / (area * ws);
+    // Mechanical connections pass force/velocity directly — no hydraulic line.
+    // The hydraulic coupling is already handled inside the cylinder model via
+    // Zc_A and Zc_B from the actual hydraulic port connections.
+    const isMechanicalConn = mechanicalPortIndices.has(portA) && mechanicalPortIndices.has(portB);
 
-    connections.push({
-      port_a: portA,
-      port_b: portB,
-      line_length: length,
-      inner_diameter: diameter,
-      fluid_id: fluidId,
-      Zc,
-    });
+    if (isMechanicalConn) {
+      connections.push({
+        port_a: portA,
+        port_b: portB,
+        line_length: 0,
+        inner_diameter: 0,
+        fluid_id: 0,
+        Zc: 0,
+        is_mechanical: true,
+      });
+    } else {
+      const fluidId = connDef.line_params.fluid_id ?? def.default_fluid_id ?? 0;
+      const fluid = fluids[fluidId] || fluids[0];
+      const length = Math.max(connDef.line_params.length, 0.05); // min 50mm
+      const diameter = connDef.line_params.inner_diameter || 0.01;
+      const area = Math.PI * diameter * diameter * 0.25;
+      const ws = waveSpeed(params.p_atm, fluid, params);
+      const beta = effectiveBulkModulus(params.p_atm, fluid, params);
+      const Zc = beta / (area * ws);
+
+      connections.push({
+        port_a: portA,
+        port_b: portB,
+        line_length: length,
+        inner_diameter: diameter,
+        fluid_id: fluidId,
+        Zc,
+        is_mechanical: false,
+      });
+    }
   }
 
   if (warnedMismatches.length > 0) {
@@ -451,9 +480,10 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     );
   }
 
-  // Compute dt from minimum line delay
+  // Compute dt from minimum line delay (mechanical connections have no propagation delay)
   let minDelay = Infinity;
   for (const conn of connections) {
+    if (conn.is_mechanical) continue;
     const fluid = fluids[conn.fluid_id] || fluids[0];
     const ws = waveSpeed(params.p_atm, fluid, params);
     const delay = conn.line_length / ws;
@@ -496,7 +526,16 @@ function initComponentState(def: { type: string; params: Record<string, number |
     case 'PRESSURE_SOURCE':
       state.ramp_count = 0;
       break;
-    case 'DOUBLE_ACTING_CYLINDER':
+    case 'DOUBLE_ACTING_CYLINDER': {
+      const stroke = typeof p.stroke_length === 'number' ? p.stroke_length : 0.2;
+      const pos = typeof p.position === 'number' ? p.position : 0;
+      state.position = Math.max(0, Math.min(pos, stroke));
+      state.velocity = 0;
+      // Initialise trapped pressure for capped ports (atmospheric)
+      state.p_cap_a = 101325;
+      state.p_cap_b = 101325;
+      break;
+    }
     case 'SINGLE_ACTING_CYLINDER': {
       const stroke = typeof p.stroke_length === 'number' ? p.stroke_length : 0.2;
       const pos = typeof p.position === 'number' ? p.position : 0;

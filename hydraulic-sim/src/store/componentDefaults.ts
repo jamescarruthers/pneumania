@@ -129,6 +129,8 @@ export function getDefaultParams(type: ComponentType): Record<string, number | s
         friction_viscous: 100,  // N·s/m
         dead_volume_A: 1e-6,
         dead_volume_B: 1e-6,
+        cap_a: 0,               // 1 = capped (trapped fluid), 0 = open
+        cap_b: 0,
         position: 0,
         external_force: 0,
       };

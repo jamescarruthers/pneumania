@@ -479,10 +479,13 @@ function initComponentState(def: { type: string; params: Record<string, number |
       state.ramp_count = 0;
       break;
     case 'DOUBLE_ACTING_CYLINDER':
-    case 'SINGLE_ACTING_CYLINDER':
-      state.position = (typeof p.position === 'number' ? p.position : 0);
+    case 'SINGLE_ACTING_CYLINDER': {
+      const strokeLen = typeof p.stroke_length === 'number' ? p.stroke_length : 0.2;
+      const normPos = typeof p.position === 'number' ? p.position : 0;
+      state.position = normPos * strokeLen;
       state.velocity = 0;
       break;
+    }
     case 'HYDROPNEUMATIC_SPHERE':
       state.h = (typeof p.diaphragm_rest_ratio === 'number' ? p.diaphragm_rest_ratio : 0.5)
         * 2 * (typeof p.R_sphere === 'number' ? p.R_sphere : 0.06);

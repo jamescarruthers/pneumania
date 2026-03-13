@@ -2013,3 +2013,97 @@ describe('Capped cylinder ports', () => {
     expect(postReset.position).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Two Cylinders Connected Together (Q-to-Q coupling)
+// ---------------------------------------------------------------------------
+
+describe('Two cylinders connected together', () => {
+  /**
+   * BUG REPRO: When two double-ended cylinders are connected port-to-port
+   * (B of cyl1 → A of cyl2), pushing cyl1 should drive cyl2.  Previously
+   * the TLM port flow sign convention was wrong for cylinders, so wave
+   * variables never propagated through Q-to-Q connections — oil appeared
+   * to "disappear" and the receiving cylinder never moved.
+   */
+  it('pushing one cylinder drives the connected cylinder', () => {
+    const src = uid();
+    const tank = uid();
+    const cyl1 = uid();
+    const cyl2 = uid();
+
+    const circuit = makeCircuit(
+      [
+        // High pressure on cyl1 cap side to push it
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 100e5 },
+          ports: [makePort('out')],
+        },
+        // Tank on cyl2 rod side (return)
+        {
+          id: tank, type: 'TANK', label: 'T',
+          position: { x: 400, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('in')],
+        },
+        // Cylinder 1: pressure drives cap side, rod side connected to cyl2
+        {
+          id: cyl1, type: 'DOUBLE_ACTING_CYLINDER', label: 'CYL1',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: 0.2,
+            mass: 5,
+            friction_viscous: 50,
+            position: 0,
+          },
+          ports: [
+            makePort('A', 'hydraulic', 'left'),
+            makePort('B', 'hydraulic', 'right'),
+            makePort('ctrl', 'signal', 'top'),
+            { id: 'mech', type: 'mechanical', side: 'bottom', offset: 0.5 },
+          ],
+        },
+        // Cylinder 2: cap side receives oil from cyl1, rod side to tank
+        {
+          id: cyl2, type: 'DOUBLE_ACTING_CYLINDER', label: 'CYL2',
+          position: { x: 250, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: 0.2,
+            mass: 5,
+            friction_viscous: 50,
+            position: 0,
+          },
+          ports: [
+            makePort('A', 'hydraulic', 'left'),
+            makePort('B', 'hydraulic', 'right'),
+            makePort('ctrl', 'signal', 'top'),
+            { id: 'mech', type: 'mechanical', side: 'bottom', offset: 0.5 },
+          ],
+        },
+      ],
+      [
+        makeConnection(src, 'out', cyl1, 'A'),     // pressure → cyl1 cap
+        makeConnection(cyl1, 'B', cyl2, 'A'),       // cyl1 rod → cyl2 cap (Q-to-Q!)
+        makeConnection(cyl2, 'B', tank, 'in'),       // cyl2 rod → tank
+      ],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+    runFor(solver, 5000);
+
+    const state1 = solver.getComponentState(cyl1);
+    const state2 = solver.getComponentState(cyl2);
+
+    // Cyl1 must have extended (pushed by pressure source)
+    expect(state1.position).toBeGreaterThan(0.01);
+    // Cyl2 must ALSO have extended (driven by oil from cyl1's rod side)
+    expect(state2.position).toBeGreaterThan(0.01);
+  });
+});

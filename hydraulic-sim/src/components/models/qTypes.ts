@@ -118,7 +118,7 @@ export function updateDoubleActingCylinder(
     portA.q = 0;   // no external flow — port is capped
   } else {
     portA.p = p_A;
-    portA.q = q_A;
+    portA.q = -q_A; // outflow convention: positive = leaving component
   }
 
   if (capB) {
@@ -127,7 +127,7 @@ export function updateDoubleActingCylinder(
     portB.q = 0;
   } else {
     portB.p = p_B;
-    portB.q = q_B;
+    portB.q = -q_B; // outflow convention: positive = leaving component
   }
 
   // Mechanical port: output piston velocity and reaction force
@@ -196,7 +196,7 @@ export function updateSingleActingCylinder(
   const p_A = c_A - Zc_A * q_A;
 
   portA.p = p_A;
-  portA.q = q_A;
+  portA.q = -q_A; // outflow convention: positive = leaving component
 
   // Mechanical port: output piston velocity and reaction force
   if (portMech) {
@@ -531,14 +531,14 @@ export function updateDcv43(
   const q_A = q_PA - q_AT;     // net at A
   const q_B = q_PB - q_BT;     // net at B
 
-  portP.q = q_P;
   portP.p = portP.c - portP.Zc * q_P;
-  portT.q = q_T;
+  portP.q = -q_P; // outflow convention: positive = leaving component
   portT.p = portT.c - portT.Zc * q_T;
-  portA.q = q_A;
+  portT.q = -q_T; // outflow convention
   portA.p = portA.c - portA.Zc * q_A;
-  portB.q = q_B;
+  portA.q = -q_A; // outflow convention
   portB.p = portB.c - portB.Zc * q_B;
+  portB.q = -q_B; // outflow convention
 }
 
 // ============================================================
@@ -583,12 +583,12 @@ export function updateDcv32(
   const q_A = q_PA - q_AT;
   const q_T = q_AT;
 
-  portP.q = q_P;
   portP.p = portP.c - portP.Zc * q_P;
-  portA.q = q_A;
+  portP.q = -q_P; // outflow convention: positive = leaving component
   portA.p = portA.c - portA.Zc * q_A;
-  portT.q = q_T;
+  portA.q = -q_A; // outflow convention
   portT.p = portT.c - portT.Zc * q_T;
+  portT.q = -q_T; // outflow convention
 }
 
 // ============================================================

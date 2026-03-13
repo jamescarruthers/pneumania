@@ -93,7 +93,7 @@ export function updateOscillatingForce(
       const prevCycle = comp.state.random_cycle ?? -1;
       if (cycle !== prevCycle) {
         // Generate new random value at each new cycle
-        const seed = cycle * 2654435761; // Knuth multiplicative hash
+        const seed = Math.imul(cycle, 2654435761); // Knuth multiplicative hash
         comp.state.random_value = ((seed & 0x7fffffff) / 0x7fffffff) * 2 - 1; // -1 to 1
         comp.state.random_cycle = cycle;
       }

@@ -480,9 +480,7 @@ function initComponentState(def: { type: string; params: Record<string, number |
       break;
     case 'DOUBLE_ACTING_CYLINDER':
     case 'SINGLE_ACTING_CYLINDER': {
-      const strokeLen = typeof p.stroke_length === 'number' ? p.stroke_length : 0.2;
-      const normPos = typeof p.position === 'number' ? p.position : 0;
-      state.position = normPos * strokeLen;
+      state.position = typeof p.position === 'number' ? p.position : 0;
       state.velocity = 0;
       break;
     }

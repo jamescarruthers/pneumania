@@ -2120,10 +2120,10 @@ describe('Two cylinders connected together', () => {
 
 describe('End-stop contact model', () => {
   /**
-   * Regression: a pressurised cylinder with a dead-ended (capped) B port used
-   * to bounce rapidly between end stops because the lossless TLM wave
-   * reflection would reflect pressure waves without dissipation.  The contact
-   * model should absorb impact energy and settle the piston at the stroke end.
+   * Regression: a pressurised cylinder (A driven, B vented to tank) used to
+   * bounce at the far end stop because the lossless TLM wave reflection would
+   * reflect pressure waves without dissipation.  The contact model should
+   * absorb impact energy and settle the piston at the stroke end.
    */
   it('cylinder settles at end-stop without repeated bouncing', () => {
     const src = uid();

@@ -1343,3 +1343,263 @@ describe('Solver Infrastructure', () => {
     expect(solver.getSimParams().time).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Mechanical Port Initialization
+// ---------------------------------------------------------------------------
+
+describe('Unconnected mechanical port initialisation', () => {
+  it('double-acting cylinder mech port is zeroed on init and does not inject phantom forces', () => {
+    const src = uid();
+    const tank = uid();
+    const cyl = uid();
+
+    // Define the cylinder with all four ports, including the mechanical port.
+    // Only the hydraulic ports (A, B) are connected; the mech port is left open.
+    const circuit = makeCircuit(
+      [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 100e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: tank, type: 'TANK', label: 'T',
+          position: { x: 200, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+        {
+          id: cyl, type: 'DOUBLE_ACTING_CYLINDER', label: 'CYL',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: 0.2,
+            mass: 10,
+            friction_viscous: 100,
+          },
+          ports: [
+            makePort('A'),
+            makePort('B'),
+            makePort('ctrl', 'signal', 'top'),
+            { id: 'mech', type: 'mechanical', side: 'right', offset: 0.5 },
+          ],
+        },
+      ],
+      [
+        makeConnection(src, 'out', cyl, 'A'),
+        makeConnection(tank, 'out', cyl, 'B'),
+      ],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+
+    // The mechanical port (local offset 3) must be zero after init.
+    const mechIdx = portIndex(solver, cyl, 3);
+    const mechInit = solver.getPortState(mechIdx);
+    expect(mechInit.p).toBe(0);
+    expect(mechInit.c).toBe(0);
+    expect(mechInit.Zc).toBe(0);
+
+    // Run the simulation — cylinder should extend as normal (pressure on
+    // cap-side, tank on rod-side → net force extends piston).
+    runFor(solver, 5000);
+
+    const state = solver.getComponentState(cyl);
+    expect(state.position).toBeGreaterThan(0);
+
+    // Mech port should still not carry phantom force / stiffness.
+    const mechAfter = solver.getPortState(mechIdx);
+    expect(mechAfter.Zc).toBe(0);
+  });
+
+  it('single-acting cylinder mech port is zeroed on init and does not inject phantom forces', () => {
+    const src = uid();
+    const cyl = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 100e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: cyl, type: 'SINGLE_ACTING_CYLINDER', label: 'CYL',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: 0.2,
+            mass: 10,
+            friction_viscous: 100,
+            spring_rate: 1000,
+            spring_preload: 100,
+          },
+          ports: [
+            makePort('A'),
+            makePort('ctrl', 'signal', 'top'),
+            { id: 'mech', type: 'mechanical', side: 'right', offset: 0.5 },
+          ],
+        },
+      ],
+      [
+        makeConnection(src, 'out', cyl, 'A'),
+      ],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+
+    // Mechanical port (local offset 2) must be zero.
+    const mechIdx = portIndex(solver, cyl, 2);
+    const mechInit = solver.getPortState(mechIdx);
+    expect(mechInit.p).toBe(0);
+    expect(mechInit.c).toBe(0);
+    expect(mechInit.Zc).toBe(0);
+
+    runFor(solver, 5000);
+
+    const state = solver.getComponentState(cyl);
+    expect(state.position).toBeGreaterThan(0);
+
+    const mechAfter = solver.getPortState(mechIdx);
+    expect(mechAfter.Zc).toBe(0);
+  });
+
+  it('mech port stays zeroed after reset()', () => {
+    const src = uid();
+    const tank = uid();
+    const cyl = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 100e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: tank, type: 'TANK', label: 'T',
+          position: { x: 200, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+        {
+          id: cyl, type: 'DOUBLE_ACTING_CYLINDER', label: 'CYL',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: 0.2,
+            mass: 10,
+            friction_viscous: 100,
+          },
+          ports: [
+            makePort('A'),
+            makePort('B'),
+            makePort('ctrl', 'signal', 'top'),
+            { id: 'mech', type: 'mechanical', side: 'right', offset: 0.5 },
+          ],
+        },
+      ],
+      [
+        makeConnection(src, 'out', cyl, 'A'),
+        makeConnection(tank, 'out', cyl, 'B'),
+      ],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+    runFor(solver, 1000);
+
+    solver.reset();
+
+    const mechIdx = portIndex(solver, cyl, 3);
+    const mechAfterReset = solver.getPortState(mechIdx);
+    expect(mechAfterReset.p).toBe(0);
+    expect(mechAfterReset.c).toBe(0);
+    expect(mechAfterReset.Zc).toBe(0);
+
+    // Hydraulic ports should be back to atmospheric (sanity check).
+    const hydIdx = portIndex(solver, cyl, 0);
+    const hydAfterReset = solver.getPortState(hydIdx);
+    expect(hydAfterReset.p).toBe(101325);
+    expect(hydAfterReset.c).toBe(101325);
+  });
+
+  it('unconnected mech port does not alter cylinder motion vs no-mech-port circuit', () => {
+    // Build two identical circuits — one with the mech port declared, one without.
+    // After the same number of steps, cylinder position should match.
+    function buildCircuit(includeMechPort: boolean) {
+      const src = uid();
+      const tank = uid();
+      const cyl = uid();
+
+      const cylPorts: PortDef[] = [makePort('A'), makePort('B')];
+      if (includeMechPort) {
+        cylPorts.push(
+          makePort('ctrl', 'signal', 'top'),
+          { id: 'mech', type: 'mechanical', side: 'right', offset: 0.5 },
+        );
+      }
+
+      const circuit = makeCircuit(
+        [
+          {
+            id: src, type: 'PRESSURE_SOURCE', label: 'P',
+            position: { x: 0, y: 0 }, rotation: 0,
+            params: { pressure: 100e5 },
+            ports: [makePort('out')],
+          },
+          {
+            id: tank, type: 'TANK', label: 'T',
+            position: { x: 200, y: 0 }, rotation: 0,
+            params: {},
+            ports: [makePort('out')],
+          },
+          {
+            id: cyl, type: 'DOUBLE_ACTING_CYLINDER', label: 'CYL',
+            position: { x: 100, y: 0 }, rotation: 0,
+            params: {
+              bore_diameter: 0.05,
+              rod_diameter: 0.025,
+              stroke_length: 0.2,
+              mass: 10,
+              friction_viscous: 100,
+            },
+            ports: cylPorts,
+          },
+        ],
+        [
+          makeConnection(src, 'out', cyl, 'A'),
+          makeConnection(tank, 'out', cyl, 'B'),
+        ],
+      );
+
+      return { circuit, cyl };
+    }
+
+    const withMech = buildCircuit(true);
+    const withoutMech = buildCircuit(false);
+
+    const solverA = new TLMSolverEngine();
+    const solverB = new TLMSolverEngine();
+    solverA.init(withMech.circuit);
+    solverB.init(withoutMech.circuit);
+
+    runFor(solverA, 3000);
+    runFor(solverB, 3000);
+
+    const posA = solverA.getComponentState(withMech.cyl).position;
+    const posB = solverB.getComponentState(withoutMech.cyl).position;
+
+    // Positions should be equal (within floating-point tolerance).
+    expect(posA).toBeCloseTo(posB, 6);
+  });
+});

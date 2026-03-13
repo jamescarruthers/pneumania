@@ -959,20 +959,27 @@ describe('Oscillating Force', () => {
     const solver = new TLMSolverEngine();
     solver.init(circuit);
 
-    // Run and sample the oscillating force at two times that land on
-    // different phases of the 10 Hz sine wave.  With dt ≈ 1e-4 the period
-    // is ~1000 steps; we deliberately pick step counts that avoid zero-
-    // crossings (multiples of 500 steps) so the force values are non-zero
-    // and distinct.
-    runFor(solver, 1100);                         // phase ≈ 2.2π → sin ≠ 0
+    // Derive step counts from the solver's actual dt so the test is
+    // deterministic regardless of how the circuit's hydraulic lines
+    // affect the time step.
+    const freq = 10; // Hz – must match the oscillator params above
+    const { dt } = solver.getSimParams();
+    const period = 1 / freq;                      // seconds per cycle
+    const stepsPerPeriod = Math.round(period / dt);
+
+    // Sample 1: phase = 0.25 cycle  →  sin(π/2) = +1  (positive peak)
+    const steps1 = Math.round(stepsPerPeriod * 1.25); // 1 full cycle + quarter
+    runFor(solver, steps1);
     const oscState1 = solver.getComponentState(osc);
     const cylState1 = solver.getComponentState(cyl);
     expect(oscState1.force_value).toBeDefined();
 
-    runFor(solver, 300);                          // phase ≈ 2.8π → sin ≠ 0, different sign
+    // Sample 2: phase = 0.75 cycle  →  sin(3π/2) = −1  (negative peak)
+    // These two phases are guaranteed to produce opposite-sign force values.
+    const steps2 = Math.round(stepsPerPeriod * 0.5); // advance half a period
+    runFor(solver, steps2);
     const oscState2 = solver.getComponentState(osc);
-    const _cylState2 = solver.getComponentState(cyl);
-    // Force values at different phases must differ by more than FP noise
+    // Force values at opposite peaks must differ by more than FP noise
     expect(Math.abs(oscState1.force_value - oscState2.force_value)).toBeGreaterThan(1);
     // Cylinder should have moved away from its initial position (0.1)
     expect(Math.abs(cylState1.position - 0.1)).toBeGreaterThan(1e-6);

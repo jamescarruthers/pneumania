@@ -929,6 +929,7 @@ describe('Oscillating Force', () => {
             makePort('A', 'hydraulic', 'left'),
             makePort('B', 'hydraulic', 'right'),
             makePort('ctrl', 'signal', 'top'),
+            { id: 'mech', type: 'mechanical', side: 'bottom', offset: 0.5 },
           ],
         },
         {
@@ -940,7 +941,7 @@ describe('Oscillating Force', () => {
             waveform: 0,        // sine
             offset: 0,
           },
-          ports: [makePort('signal_out', 'signal', 'right')],
+          ports: [{ id: 'mech', type: 'mechanical', side: 'right', offset: 0.5 }],
         },
       ],
       [
@@ -948,8 +949,8 @@ describe('Oscillating Force', () => {
         makeConnection(tank, 'out', cyl, 'B'),
         {
           id: uid(),
-          from: { component: osc, port: 'signal_out' },
-          to: { component: cyl, port: 'ctrl' },
+          from: { component: osc, port: 'mech' },
+          to: { component: cyl, port: 'mech' },
           waypoints: [],
           line_params: { inner_diameter: 0, length: 0, fluid_id: 0 },
         },
@@ -999,10 +1000,10 @@ describe('Oscillating Force', () => {
             waveform: 1, // square
             offset: 0,
           },
-          ports: [makePort('signal_out', 'signal', 'right')],
+          ports: [{ id: 'mech', type: 'mechanical', side: 'right', offset: 0.5 }],
         },
       ],
-      [], // no hydraulic connections needed; solver falls back to default dt
+      [], // no connections needed; solver falls back to default dt
     );
 
     const solver = new TLMSolverEngine();
@@ -1028,10 +1029,10 @@ describe('Oscillating Force', () => {
             waveform: 3,  // random
             offset: 100,
           },
-          ports: [makePort('signal_out', 'signal', 'right')],
+          ports: [{ id: 'mech', type: 'mechanical', side: 'right', offset: 0.5 }],
         },
       ],
-      [], // no hydraulic connections needed; solver falls back to default dt
+      [], // no connections needed; solver falls back to default dt
     );
 
     const solver = new TLMSolverEngine();

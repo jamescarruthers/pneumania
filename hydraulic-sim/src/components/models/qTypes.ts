@@ -492,9 +492,8 @@ export function updateVariableOrifice(
   const fluidId = p1.fluid_id ?? 0;
   const fluid = fluids[fluidId] || fluids[0];
 
-  const dp = p1.c - p2.c;
   const p_avg = Math.max(0.5 * (p1.c + p2.c), P_ATM);
-  const q = orificeFlow(dp, Cd, areaEff, fluid, p_avg, params);
+  const q = solveOrificeFlowNR(p1.c, p1.Zc, p2.c, p2.Zc, Cd, areaEff, fluid, p_avg, params);
 
   p1.p = p1.c - p1.Zc * q;
   p1.q = -q;

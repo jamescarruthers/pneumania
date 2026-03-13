@@ -1343,9 +1343,9 @@ describe('Solver Infrastructure', () => {
 
     solver.reset();
 
-    // reset() zeroes component state (does not restore initial params)
+    // reset() restores initial component state
     const stateAfter = solver.getComponentState(cyl);
-    expect(stateAfter.position).toBe(0);
+    expect(stateAfter.position).toBeCloseTo(0.08, 6);
     expect(stateAfter.velocity).toBe(0);
     expect(solver.getSimParams().step).toBe(0);
     expect(solver.getSimParams().time).toBe(0);

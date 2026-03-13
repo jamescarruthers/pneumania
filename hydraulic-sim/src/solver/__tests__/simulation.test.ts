@@ -2187,3 +2187,118 @@ describe('End-stop contact model', () => {
     expect(Math.abs(stateLater.velocity)).toBeLessThan(0.01);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Fluid ID mapping / resolution
+// ---------------------------------------------------------------------------
+
+describe('Fluid ID resolution', () => {
+  it('maps arbitrary fluid IDs to internal indices for line params and component params', () => {
+    const src = uid();
+    const line = uid();
+    const sink = uid();
+
+    const gasFluid: FluidDef = {
+      id: 7,
+      fluid_type: 'GAS',
+      beta_base: 0,
+      rho_base: 1.225,
+      nu: 15e-6,
+      x_air_0: 0,
+      kappa: 1.4,
+      p_vapour: 0,
+      gamma: 1.4,
+      molar_mass: 0.029,
+      henry_coeff: 0,
+      label: 'Air',
+    };
+
+    const circuit: CircuitDefinition = {
+      version: '1',
+      fluids: [ISO_VG_46, gasFluid],
+      default_fluid_id: 7,
+      components: [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 3e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: line, type: 'TLM_LINE', label: 'L',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: { fluid_id: 7, volume: 1e-5 },
+          ports: [makePort('a'), makePort('b')],
+        },
+        {
+          id: sink, type: 'TANK', label: 'T',
+          position: { x: 200, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+      ],
+      connections: [
+        { ...makeConnection(src, 'out', line, 'a'), line_params: { inner_diameter: 0.01, length: 0.5, fluid_id: 7 } },
+        { ...makeConnection(line, 'b', sink, 'out'), line_params: { inner_diameter: 0.01, length: 0.5, fluid_id: 7 } },
+      ],
+      ui: { camera: { x: 0, y: 0, zoom: 1 }, grid_size: 20 },
+    };
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+
+    const compiled = solver.getCompiledCircuit();
+    expect(compiled).toBeTruthy();
+
+    expect(compiled!.connections[0].fluid_id).toBe(1);
+    expect(compiled!.connections[1].fluid_id).toBe(1);
+
+    const lineComp = compiled!.componentById.get(line);
+    expect(lineComp?.params.fluid_id).toBe(1);
+  });
+
+  it('falls back to default fluid when unknown IDs are used', () => {
+    const src = uid();
+    const line = uid();
+    const sink = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 3e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: line, type: 'TLM_LINE', label: 'L',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: { fluid_id: 999, volume: 1e-5 },
+          ports: [makePort('a'), makePort('b')],
+        },
+        {
+          id: sink, type: 'TANK', label: 'T',
+          position: { x: 200, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+      ],
+      [
+        { ...makeConnection(src, 'out', line, 'a'), line_params: { inner_diameter: 0.01, length: 0.5, fluid_id: 999 } },
+        makeConnection(line, 'b', sink, 'out'),
+      ],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+
+    const compiled = solver.getCompiledCircuit();
+    expect(compiled).toBeTruthy();
+
+    expect(compiled!.connections[0].fluid_id).toBe(0);
+    expect(compiled!.connections[1].fluid_id).toBe(0);
+
+    const lineComp = compiled!.componentById.get(line);
+    expect(lineComp?.params.fluid_id).toBe(0);
+  });
+});

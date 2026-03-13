@@ -330,6 +330,17 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     ? def.fluids
     : [{ id: 0, fluid_type: 'LIQUID' as const, beta_base: 1.6e9, rho_base: 861, nu: 46e-6, x_air_0: 0.01, kappa: 1.2, p_vapour: 3000, gamma: 0, molar_mass: 0, henry_coeff: 0, label: 'ISO VG 46' }];
 
+  const fluidIndexById = new Map<number, number>();
+  for (let i = 0; i < fluids.length; i++) {
+    fluidIndexById.set(fluids[i].id, i);
+  }
+
+  const defaultFluidIndex = fluidIndexById.get(def.default_fluid_id) ?? 0;
+  const resolveFluidIndex = (fluidId: number | undefined): number => {
+    if (fluidId === undefined) return defaultFluidIndex;
+    return fluidIndexById.get(fluidId) ?? defaultFluidIndex;
+  };
+
   const params: SimParams = { ...DEFAULT_SIM_PARAMS };
 
   // Assign port indices
@@ -352,7 +363,13 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
 
     const numericParams: Record<string, number> = {};
     for (const [key, val] of Object.entries(compDef.params)) {
-      if (typeof val === 'number') numericParams[key] = val;
+      if (typeof val === 'number') {
+        if ((key === 'fluid_id' || key === 'fluid_id_gas') && Number.isFinite(val)) {
+          numericParams[key] = resolveFluidIndex(val);
+        } else {
+          numericParams[key] = val;
+        }
+      }
       else if (typeof val === 'boolean') numericParams[key] = val ? 1 : 0;
     }
 
@@ -477,7 +494,7 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
         is_mechanical: true,
       });
     } else {
-      const fluidId = connDef.line_params.fluid_id ?? def.default_fluid_id ?? 0;
+      const fluidId = resolveFluidIndex(connDef.line_params.fluid_id);
       const fluid = fluids[fluidId] || fluids[0];
       const length = Math.max(connDef.line_params.length, MIN_LINE_LENGTH);
       const diameter = connDef.line_params.inner_diameter || 0.01;

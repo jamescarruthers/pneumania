@@ -1344,6 +1344,91 @@ describe('Solver Infrastructure', () => {
     expect(solver.getSimParams().step).toBe(0);
     expect(solver.getSimParams().time).toBe(0);
   });
+
+  it('reset() and initial port state use non-default p_atm', () => {
+    const src = uid();
+    const tank = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 50e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: tank, type: 'TANK', label: 'T',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+      ],
+      [makeConnection(src, 'out', tank, 'out')],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+
+    // Override p_atm to a non-default value on the compiled circuit
+    const customPAtm = 90000;
+    const compiled = solver.getCompiledCircuit()!;
+    compiled.params.p_atm = customPAtm;
+
+    // Run a few steps so ports diverge from initial atmospheric
+    runFor(solver, 500);
+
+    // After reset, hydraulic ports should use the custom p_atm
+    solver.reset();
+
+    const srcPortIdx = portIndex(solver, src, 0);
+    const tankPortIdx = portIndex(solver, tank, 0);
+    const srcPort = solver.getPortState(srcPortIdx);
+    const tankPort = solver.getPortState(tankPortIdx);
+
+    expect(srcPort.p).toBe(customPAtm);
+    expect(srcPort.c).toBe(customPAtm);
+    expect(tankPort.p).toBe(customPAtm);
+    expect(tankPort.c).toBe(customPAtm);
+
+    // Verify it does NOT equal the default — the custom value is actually used
+    expect(srcPort.p).not.toBe(DEFAULT_SIM_PARAMS.p_atm);
+  });
+
+  it('getPortState out-of-range fallback uses active p_atm', () => {
+    const src = uid();
+    const tank = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 50e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: tank, type: 'TANK', label: 'T',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+      ],
+      [makeConnection(src, 'out', tank, 'out')],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+
+    // Override p_atm to a non-default value
+    const customPAtm = 85000;
+    solver.getCompiledCircuit()!.params.p_atm = customPAtm;
+
+    // Request a port index that is out of range
+    const fallback = solver.getPortState(9999);
+    expect(fallback.p).toBe(customPAtm);
+    expect(fallback.c).toBe(customPAtm);
+  });
 });
 
 // ---------------------------------------------------------------------------

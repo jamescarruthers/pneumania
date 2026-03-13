@@ -55,7 +55,7 @@ export interface CompiledCircuit {
   params: SimParams;
 }
 
-function createDefaultPort(p_atm: number = DEFAULT_SIM_PARAMS.p_atm): PortState {
+function createDefaultPort(p_atm: number): PortState {
   return { p: p_atm, q: 0, c: p_atm, Zc: 1e6, fluid_id: 0 };
 }
 
@@ -251,7 +251,7 @@ export class TLMSolverEngine implements Solver {
 
   getPortState(index: number): PortState {
     if (!this.circuit || index >= this.circuit.ports.length) {
-      return createDefaultPort();
+      return createDefaultPort(this.circuit?.params.p_atm ?? DEFAULT_SIM_PARAMS.p_atm);
     }
     return { ...this.circuit.ports[index] };
   }

@@ -85,24 +85,41 @@ export function updateDoubleActingCylinder(
   const F_mech = portMech ? portMech.c : 0;
   const Zc_mech = portMech ? portMech.Zc : 0;
 
+  // End-stop contact model (semi-implicit penalty method).
+  // A stiff spring + heavy damper at each end stop dissipates impact energy
+  // and produces physically realistic pressures during contact, preventing
+  // the lossless pressure-wave reflection that causes piston bounce.
+  const endstopStiffness = comp.params.endstop_stiffness ?? 1e8;  // N/m
+  const endstopDamping = comp.params.endstop_damping ?? 1e4;      // N·s/m
+  let F_contact = 0;
+  let K_contact = 0;  // semi-implicit stiffness contribution
+  if (position <= 0) {
+    F_contact = endstopStiffness * (-position) + endstopDamping * Math.max(-velocity, 0);
+    K_contact = endstopStiffness * params.dt + endstopDamping;
+  } else if (position >= stroke) {
+    F_contact = -endstopStiffness * (position - stroke) - endstopDamping * Math.max(velocity, 0);
+    K_contact = endstopStiffness * params.dt + endstopDamping;
+  }
+
   // TLM-coupled Newton's second law
   const hydraulicStiffness = Zc_A * A_cap * A_cap + Zc_B * A_rod * A_rod + Zc_mech;
   const F_wave = c_A * A_cap - c_B * A_rod;
   const F_ext = externalForce + (comp.params.external_force ?? 0) + (comp.state.signal_input ?? 0) + F_mech;
 
-  const denom = mass / params.dt + hydraulicStiffness + frictionViscous;
-  let v_new = (mass * velocity / params.dt + F_wave + F_ext) / denom;
+  const denom = mass / params.dt + hydraulicStiffness + frictionViscous + K_contact;
+  let v_new = (mass * velocity / params.dt + F_wave + F_ext + F_contact) / denom;
 
   // Position update (trapezoidal)
   let x_new = position + params.dt * 0.5 * (velocity + v_new);
 
-  // Hard stops
+  // Hard clamp (safety net — the contact model should prevent significant penetration,
+  // but clamp to guarantee bounds in extreme transients)
   if (x_new < 0) {
     x_new = 0;
-    v_new = 0;
+    if (v_new < 0) v_new = 0;
   } else if (x_new > stroke) {
     x_new = stroke;
-    v_new = 0;
+    if (v_new > 0) v_new = 0;
   }
 
   // Port flows and pressures
@@ -181,16 +198,29 @@ export function updateSingleActingCylinder(
   const F_atm = -P_ATM * A_rod;
   const F_ext = externalForce + (comp.params.external_force ?? 0) + (comp.state.signal_input ?? 0) + F_mech;
 
+  // End-stop contact model (semi-implicit penalty method)
+  const endstopStiffness = comp.params.endstop_stiffness ?? 1e8;
+  const endstopDamping = comp.params.endstop_damping ?? 1e4;
+  let F_contact = 0;
+  let K_contact = 0;
+  if (position <= 0) {
+    F_contact = endstopStiffness * (-position) + endstopDamping * Math.max(-velocity, 0);
+    K_contact = endstopStiffness * params.dt + endstopDamping;
+  } else if (position >= stroke) {
+    F_contact = -endstopStiffness * (position - stroke) - endstopDamping * Math.max(velocity, 0);
+    K_contact = endstopStiffness * params.dt + endstopDamping;
+  }
+
   // Semi-implicit: include spring stiffness in denominator for stability
   const hydraulicStiffness = Zc_A * A_cap * A_cap + Zc_mech;
   const springStiffness = springRate * params.dt;
-  const denom = mass / params.dt + hydraulicStiffness + frictionViscous + springStiffness;
-  let v_new = (mass * velocity / params.dt + c_A * A_cap + F_spring + F_atm + F_ext) / denom;
+  const denom = mass / params.dt + hydraulicStiffness + frictionViscous + springStiffness + K_contact;
+  let v_new = (mass * velocity / params.dt + c_A * A_cap + F_spring + F_atm + F_ext + F_contact) / denom;
 
   let x_new = position + params.dt * 0.5 * (velocity + v_new);
 
-  if (x_new < 0) { x_new = 0; v_new = 0; }
-  else if (x_new > stroke) { x_new = stroke; v_new = 0; }
+  if (x_new < 0) { x_new = 0; if (v_new < 0) v_new = 0; }
+  else if (x_new > stroke) { x_new = stroke; if (v_new > 0) v_new = 0; }
 
   const q_A = v_new * A_cap;
   const p_A = c_A - Zc_A * q_A;

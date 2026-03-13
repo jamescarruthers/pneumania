@@ -22,6 +22,8 @@ interface CircuitState {
   addConnection: (from: { component: string; port: string }, to: { component: string; port: string }) => string | null;
   removeConnection: (id: string) => void;
   updateConnectionFluid: (id: string, fluidId: number) => void;
+  updateConnectionDiameter: (id: string, diameter: number) => void;
+  updateConnectionLength: (id: string, length: number) => void;
   setDefaultFluid: (fluidId: number) => void;
   loadCircuit: (circuit: CircuitDefinition) => void;
   clearCircuit: () => void;
@@ -173,6 +175,32 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
         connections: state.circuit.connections.map((c) =>
           c.id === id
             ? { ...c, line_params: { ...c.line_params, fluid_id: fluidId } }
+            : c
+        ),
+      },
+    }));
+  },
+
+  updateConnectionDiameter: (id, diameter) => {
+    set((state) => ({
+      circuit: {
+        ...state.circuit,
+        connections: state.circuit.connections.map((c) =>
+          c.id === id
+            ? { ...c, line_params: { ...c.line_params, inner_diameter: diameter } }
+            : c
+        ),
+      },
+    }));
+  },
+
+  updateConnectionLength: (id, length) => {
+    set((state) => ({
+      circuit: {
+        ...state.circuit,
+        connections: state.circuit.connections.map((c) =>
+          c.id === id
+            ? { ...c, line_params: { ...c.line_params, length } }
             : c
         ),
       },

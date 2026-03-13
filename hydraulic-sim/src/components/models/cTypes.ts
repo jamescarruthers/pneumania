@@ -82,14 +82,29 @@ export function updateTlmLine(
   const beta = effectiveBulkModulus(p_internal, fluid, params);
   const Zc = (beta * params.dt) / (2 * volume);
 
+  // Save incoming waves from Pass 1 (connection propagation)
+  const c_in_1 = p1.c;
+  const Zc_in_1 = p1.Zc;
+  const c_in_2 = p2.c;
+  const Zc_in_2 = p2.Zc;
+
+  // Compute flow at each port from incoming wave equation (semi-implicit)
+  const q1 = (c_in_1 - p_internal) / (Zc_in_1 + Zc);
+  const q2 = (c_in_2 - p_internal) / (Zc_in_2 + Zc);
+
   // Pressure update from net flow
-  const q_net = p1.q + p2.q; // positive = into volume
+  const q_net = q1 + q2;
   p_internal += (beta * params.dt / volume) * q_net;
   comp.state.p_internal = p_internal;
 
-  p1.c = p_internal + Zc * p1.q;
+  // Set port state with proper wave reflection
+  p1.q = q1;
+  p1.p = p_internal;
+  p1.c = p_internal + Zc * q1;
   p1.Zc = Zc;
-  p2.c = p_internal + Zc * p2.q;
+  p2.q = q2;
+  p2.p = p_internal;
+  p2.c = p_internal + Zc * q2;
   p2.Zc = Zc;
 }
 
@@ -108,24 +123,30 @@ export function updateTeeJunction(
   const fluid = fluids[fluidId] || fluids[0];
   let p_junction = comp.state.p_junction ?? P_ATM;
 
-  // Sum flows into junction
+  const beta = effectiveBulkModulus(p_junction, fluid, params);
+  const Zc = (beta * params.dt) / (2 * volume);
+
+  // Compute flow at each port from incoming wave equation (semi-implicit)
+  const flows: number[] = [];
   let q_net = 0;
   for (let i = 0; i < comp.portCount; i++) {
-    q_net += ports[comp.portStartIndex + i].q;
+    const port = ports[comp.portStartIndex + i];
+    const q = (port.c - p_junction) / (port.Zc + Zc);
+    flows.push(q);
+    q_net += q;
   }
 
-  const beta = effectiveBulkModulus(p_junction, fluid, params);
+  // Update junction pressure from net flow
   p_junction += (beta * params.dt / volume) * q_net;
   comp.state.p_junction = p_junction;
 
-  const Zc = (beta * params.dt) / (2 * volume);
-
-  // Write wave variables to all ports
+  // Set port state with proper wave reflection
   for (let i = 0; i < comp.portCount; i++) {
     const port = ports[comp.portStartIndex + i];
-    port.c = p_junction + Zc * port.q;
-    port.Zc = Zc;
+    port.q = flows[i];
     port.p = p_junction;
+    port.c = p_junction + Zc * flows[i];
+    port.Zc = Zc;
   }
 }
 
@@ -162,7 +183,11 @@ export function updateHydropneumaticSphere(
   const V_total = (4 / 3) * Math.PI * R * R * R;
   const V_gas_0 = V_total - V_cap(h_rest);
 
-  // Gas pressure (polytropic)
+  // Save incoming wave from Pass 1 (connection propagation)
+  const c_in = port.c;
+  const Zc_in = port.Zc;
+
+  // Gas pressure (polytropic) at current state
   const V_gas = V_total - V_cap(h);
   const V_gas_safe = Math.max(V_gas, 1e-9);
   const p_gas = precharge * Math.pow(V_gas_0 / V_gas_safe, kappa);
@@ -173,7 +198,7 @@ export function updateHydropneumaticSphere(
   // Liquid-side pressure
   const p_liquid = p_gas + p_elastic;
 
-  // Effective stiffness
+  // Effective stiffness for semi-implicit coupling
   const K_gas = kappa * p_gas / V_gas_safe;
   const K_elastic = modulus * thickness / (R * R * Math.max(A_eff(h), 1e-9));
   const K_total = K_gas + K_elastic;
@@ -181,16 +206,27 @@ export function updateHydropneumaticSphere(
 
   const Zc = params.dt / (2.0 * C_total);
 
-  // Wave variable output
-  port.c = p_liquid + Zc * port.q;
-  port.Zc = Zc;
-  port.p = p_liquid;
+  // Compute flow from incoming wave equation (semi-implicit TLM coupling)
+  const q = (c_in - p_liquid) / (Zc_in + Zc);
 
-  // Update diaphragm position from flow
+  // Update diaphragm position from computed flow
   const A_eff_h = Math.max(A_eff(h), 1e-9);
-  h += params.dt * port.q / A_eff_h;
+  h += params.dt * q / A_eff_h;
   h = Math.max(h_min, Math.min(h_max, h));
   comp.state.h = h;
+
+  // Recompute pressure from updated diaphragm position
+  const V_gas_new = V_total - V_cap(h);
+  const V_gas_new_safe = Math.max(V_gas_new, 1e-9);
+  const p_gas_new = precharge * Math.pow(V_gas_0 / V_gas_new_safe, kappa);
+  const p_elastic_new = modulus * thickness * (h - h_rest) / (R * R);
+  const p_liquid_new = p_gas_new + p_elastic_new;
+
+  // Set port state with proper wave reflection
+  port.q = q;
+  port.p = p_liquid_new;
+  port.c = p_liquid_new + Zc * q;
+  port.Zc = Zc;
 }
 
 // ============================================================
@@ -216,6 +252,10 @@ export function updatePistonAccumulator(
   const A = Math.PI * bore * bore * 0.25;
   let x = comp.state.piston_position ?? 0;
 
+  // Save incoming wave from Pass 1 (connection propagation)
+  const c_in = port.c;
+  const Zc_in = port.Zc;
+
   const V_gas_0 = A * stroke;
   const V_gas = A * (stroke - x);
   const V_gas_safe = Math.max(V_gas, 1e-9);
@@ -225,15 +265,24 @@ export function updatePistonAccumulator(
   const C_total = 1.0 / Math.max(K_gas, 1e-3);
   const Zc = params.dt / (2.0 * C_total);
 
-  const p_liquid = p_gas;
-  port.c = p_liquid + Zc * port.q;
-  port.Zc = Zc;
-  port.p = p_liquid;
+  // Compute flow from incoming wave equation (semi-implicit TLM coupling)
+  const q = (c_in - p_gas) / (Zc_in + Zc);
 
-  // Position update
-  x += params.dt * port.q / A;
+  // Position update from computed flow
+  x += params.dt * q / A;
   x = Math.max(0, Math.min(stroke, x));
   comp.state.piston_position = x;
+
+  // Recompute pressure from updated position
+  const V_gas_new = A * (stroke - x);
+  const V_gas_new_safe = Math.max(V_gas_new, 1e-9);
+  const p_gas_new = precharge * Math.pow(V_gas_0 / V_gas_new_safe, kappa);
+
+  // Set port state with proper wave reflection
+  port.q = q;
+  port.p = p_gas_new;
+  port.c = p_gas_new + Zc * q;
+  port.Zc = Zc;
 }
 
 // ============================================================
@@ -302,16 +351,36 @@ export function updateBalloon(
   const Zc_damping = dampingRatio * Math.sqrt(Math.abs(K)) * params.dt;
   const Zc = Zc_elastic + Zc_damping;
 
-  port.c = p_internal + Zc * port.q;
-  port.Zc = Zc;
-  port.p = p_internal;
+  // Save incoming wave from Pass 1 (connection propagation)
+  const c_in = port.c;
+  const Zc_in = port.Zc;
 
-  // Update volume
-  V += params.dt * port.q;
+  // Compute flow from incoming wave equation (semi-implicit TLM coupling)
+  const q = (c_in - p_internal) / (Zc_in + Zc);
+
+  // Update volume from computed flow
+  V += params.dt * q;
   const V_min = V_nominal * 0.1;
   const V_burst = isSpherical
     ? (4 / 3) * Math.PI * Math.pow(R_nominal * (1 + maxStrain), 3)
     : Math.PI * Math.pow(R_nominal * (1 + maxStrain), 2) * length;
   V = Math.max(V_min, Math.min(V_burst, V));
   comp.state.V_current = V;
+
+  // Recompute pressure from updated volume
+  const R_new = isSpherical
+    ? Math.pow((3 * V) / (4 * Math.PI), 1 / 3)
+    : Math.sqrt(V / (Math.PI * length));
+  const eps_new = (R_new - R_nominal) / R_nominal;
+  const sig_new = E * eps_new * (1.0 + (stiffening - 1.0) * eps_new * eps_new);
+  const p_membrane_new = isSpherical
+    ? (2.0 * sig_new * wallThickness) / R_new
+    : (sig_new * wallThickness) / R_new;
+  const p_internal_new = p_external + p_membrane_new;
+
+  // Set port state with proper wave reflection
+  port.q = q;
+  port.p = p_internal_new;
+  port.c = p_internal_new + Zc * q;
+  port.Zc = Zc;
 }

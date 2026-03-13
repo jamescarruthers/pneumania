@@ -93,12 +93,12 @@ export function updateDoubleActingCylinder(
   const endstopDamping = comp.params.endstop_damping ?? 1e4;      // N·s/m
   let F_contact = 0;
   let K_contact = 0;  // semi-implicit stiffness contribution
-  if (position < 0 || (position === 0 && velocity < 0)) {
-    // Penetrating left stop or arriving at it
+  if (position <= 0) {
+    // At or penetrating left stop – spring pushes right, damper opposes inward velocity
     F_contact = endstopStiffness * (-position) + endstopDamping * Math.max(-velocity, 0);
     K_contact = endstopStiffness * params.dt + endstopDamping;
-  } else if (position > stroke || (position === stroke && velocity > 0)) {
-    // Penetrating right stop or arriving at it
+  } else if (position >= stroke) {
+    // At or penetrating right stop – spring pushes left, damper opposes inward velocity
     F_contact = -endstopStiffness * (position - stroke) - endstopDamping * Math.max(velocity, 0);
     K_contact = endstopStiffness * params.dt + endstopDamping;
   }
@@ -205,10 +205,10 @@ export function updateSingleActingCylinder(
   const endstopDamping = comp.params.endstop_damping ?? 1e4;
   let F_contact = 0;
   let K_contact = 0;
-  if (position < 0 || (position === 0 && velocity < 0)) {
+  if (position <= 0) {
     F_contact = endstopStiffness * (-position) + endstopDamping * Math.max(-velocity, 0);
     K_contact = endstopStiffness * params.dt + endstopDamping;
-  } else if (position > stroke || (position === stroke && velocity > 0)) {
+  } else if (position >= stroke) {
     F_contact = -endstopStiffness * (position - stroke) - endstopDamping * Math.max(velocity, 0);
     K_contact = endstopStiffness * params.dt + endstopDamping;
   }

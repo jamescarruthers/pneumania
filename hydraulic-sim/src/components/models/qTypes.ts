@@ -12,6 +12,9 @@ import {
 } from '../../solver/types';
 import { orificeFlow, effectiveDensity, effectiveBulkModulus } from '../../fluid/properties';
 
+/** Minimum trapped volume (m³) to prevent division-by-zero in impedance calculations. */
+const MIN_TRAPPED_VOLUME_M3 = 1e-10;
+
 // ============================================================
 // Double-Acting Cylinder (Q-type)
 // ============================================================
@@ -51,7 +54,7 @@ export function updateDoubleActingCylinder(
     // Capped port A: trapped fluid volume acts as a hydraulic spring.
     // V_A increases with extension (positive x), so extending drops pressure.
     const deadVol = comp.params.dead_volume_A ?? 1e-6;
-    const V_A = Math.max(A_cap * position + deadVol, 1e-10);
+    const V_A = Math.max(A_cap * position + deadVol, MIN_TRAPPED_VOLUME_M3);
     const fluid = fluids[portA.fluid_id] || fluids[0];
     const p_trapped = comp.state.p_cap_a ?? params.p_atm;
     const beta = effectiveBulkModulus(p_trapped, fluid, params);
@@ -67,7 +70,7 @@ export function updateDoubleActingCylinder(
     // Capped port B: trapped fluid on the rod side.
     // V_B decreases with extension (positive x), so extending raises pressure.
     const deadVol = comp.params.dead_volume_B ?? 1e-6;
-    const V_B = Math.max(A_rod * (stroke - position) + deadVol, 1e-10);
+    const V_B = Math.max(A_rod * (stroke - position) + deadVol, MIN_TRAPPED_VOLUME_M3);
     const fluid = fluids[portB.fluid_id] || fluids[0];
     const p_trapped = comp.state.p_cap_b ?? params.p_atm;
     const beta = effectiveBulkModulus(p_trapped, fluid, params);

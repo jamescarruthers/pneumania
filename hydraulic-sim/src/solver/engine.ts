@@ -11,6 +11,7 @@ import {
   type FluidDef,
   type ComponentInstance,
   DEFAULT_SIM_PARAMS,
+  P_ATM,
   type CircuitDefinition,
   type Solver,
   COMPONENT_TLM_CLASS,
@@ -56,7 +57,7 @@ export interface CompiledCircuit {
 }
 
 function createDefaultPort(): PortState {
-  return { p: 101325, q: 0, c: 101325, Zc: 1e6, fluid_id: 0 };
+  return { p: P_ATM, q: 0, c: P_ATM, Zc: 1e6, fluid_id: 0 };
 }
 
 export class TLMSolverEngine implements Solver {
@@ -279,16 +280,16 @@ export class TLMSolverEngine implements Solver {
     if (!this.circuit) return;
     for (let i = 0; i < this.circuit.ports.length; i++) {
       const isMech = this.circuit.mechanicalPortIndices.has(i);
-      this.circuit.ports[i].p = isMech ? 0 : 101325;
+      this.circuit.ports[i].p = isMech ? 0 : P_ATM;
       this.circuit.ports[i].q = 0;
-      this.circuit.ports[i].c = isMech ? 0 : 101325;
+      this.circuit.ports[i].c = isMech ? 0 : P_ATM;
       this.circuit.ports[i].Zc = isMech ? 0 : 1e6;
     }
     for (let i = 0; i < this.circuit.portsPrev.length; i++) {
       const isMech = this.circuit.mechanicalPortIndices.has(i);
-      this.circuit.portsPrev[i].p = isMech ? 0 : 101325;
+      this.circuit.portsPrev[i].p = isMech ? 0 : P_ATM;
       this.circuit.portsPrev[i].q = 0;
-      this.circuit.portsPrev[i].c = isMech ? 0 : 101325;
+      this.circuit.portsPrev[i].c = isMech ? 0 : P_ATM;
       this.circuit.portsPrev[i].Zc = isMech ? 0 : 1e6;
     }
     for (const comp of this.circuit.components) {
@@ -392,7 +393,8 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
   // Compile connections — separate signal routes from TLM connections
   const connections: CompiledConnection[] = [];
   const signalRoutes: SignalRoute[] = [];
-  const warnedMismatches: string[] = [];
+  const signalMismatches: string[] = [];
+  const domainMismatches: string[] = [];
   for (const connDef of def.connections) {
     const fromMap = componentPortMap.get(connDef.from.component);
     const toMap = componentPortMap.get(connDef.to.component);
@@ -406,8 +408,8 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     const toType = portTypeLookup.get(`${connDef.to.component}:${connDef.to.port}`);
     if (fromType === 'signal' || toType === 'signal') {
       if (fromType !== 'signal' || toType !== 'signal') {
-        // Mismatched connection (signal↔hydraulic/mechanical) — collect for single warning
-        warnedMismatches.push(
+        // Mismatched connection (signal↔hydraulic/mechanical)
+        signalMismatches.push(
           `  ${connDef.from.component}:${connDef.from.port} (${fromType}) → ${connDef.to.component}:${connDef.to.port} (${toType})`
         );
         continue;
@@ -449,7 +451,7 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
 
     if (portAisMech !== portBisMech) {
       // Cross-domain mismatch: one port is mechanical, the other hydraulic
-      warnedMismatches.push(
+      domainMismatches.push(
         `  ${connDef.from.component}:${connDef.from.port} (${portAisMech ? 'mechanical' : 'hydraulic'}) → ${connDef.to.component}:${connDef.to.port} (${portBisMech ? 'mechanical' : 'hydraulic'})`
       );
       continue;
@@ -489,9 +491,14 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     }
   }
 
-  if (warnedMismatches.length > 0) {
+  if (signalMismatches.length > 0) {
     console.warn(
-      `Connection routing: skipping ${warnedMismatches.length} mismatched connection(s):\n${warnedMismatches.join('\n')}`
+      `Signal routing: skipping ${signalMismatches.length} mismatched connection(s):\n${signalMismatches.join('\n')}`
+    );
+  }
+  if (domainMismatches.length > 0) {
+    console.warn(
+      `Domain routing: skipping ${domainMismatches.length} mismatched connection(s):\n${domainMismatches.join('\n')}`
     );
   }
 

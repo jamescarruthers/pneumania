@@ -11,6 +11,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TLMSolverEngine } from '../engine';
+import { DEFAULT_SIM_PARAMS } from '../types';
 import type { CircuitDefinition, ComponentDef, ConnectionDef, FluidDef, PortDef } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -1813,7 +1814,7 @@ describe('Capped cylinder ports', () => {
     solver.init(circuit);
 
     const initialState = solver.getComponentState(cyl);
-    expect(initialState.p_cap_b).toBeCloseTo(101325, -2); // starts at ~atmospheric
+    expect(initialState.p_cap_b).toBeCloseTo(DEFAULT_SIM_PARAMS.p_atm, 0); // starts at atmospheric
 
     runFor(solver, 5000);
 
@@ -1821,7 +1822,7 @@ describe('Capped cylinder ports', () => {
     // Piston should have extended, compressing the trapped B-side fluid
     expect(finalState.position).toBeGreaterThan(0);
     // Trapped pressure must have risen above atmospheric
-    expect(finalState.p_cap_b).toBeGreaterThan(101325);
+    expect(finalState.p_cap_b).toBeGreaterThan(DEFAULT_SIM_PARAMS.p_atm);
   });
 
   it('does not produce NaN with zero dead volume', () => {
@@ -1918,12 +1919,12 @@ describe('Capped cylinder ports', () => {
 
     // Pressure should have risen
     const preReset = solver.getComponentState(cyl);
-    expect(preReset.p_cap_b).toBeGreaterThan(101325);
+    expect(preReset.p_cap_b).toBeGreaterThan(DEFAULT_SIM_PARAMS.p_atm);
 
     // After reset, trapped pressure should return to atmospheric
     solver.reset();
     const postReset = solver.getComponentState(cyl);
-    expect(postReset.p_cap_b).toBeCloseTo(101325, -2);
+    expect(postReset.p_cap_b).toBeCloseTo(DEFAULT_SIM_PARAMS.p_atm, 0);
     expect(postReset.position).toBe(0);
   });
 });

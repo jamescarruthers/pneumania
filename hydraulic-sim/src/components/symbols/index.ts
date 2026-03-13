@@ -923,6 +923,8 @@ export const COMPONENT_SIZES: Record<string, { width: number; height: number }> 
   CHECK_VALVE: { width: 50, height: 24 },
   ONE_WAY_FLOW_CONTROL: { width: 50, height: 24 },
   DCV_4_3: { width: 100, height: 50 },
+  DCV_5_2: { width: 100, height: 50 },
+  DCV_5_3: { width: 100, height: 50 },
   DCV_3_2: { width: 70, height: 50 },
   TEE_JUNCTION: { width: 40, height: 30 },
   CROSS_JUNCTION: { width: 40, height: 40 },
@@ -1017,6 +1019,113 @@ export function drawComponentSymbol(
   }
 }
 
+// Exact local port positions (unrotated, relative to component centre)
+// matching the visual drawing code in each draw*Symbol function.
+const PORT_LOCAL_POSITIONS: Record<string, Record<string, { x: number; y: number }>> = {
+  DOUBLE_ACTING_CYLINDER: {
+    port_A: { x: -50, y: 0 },   // -width/2
+    port_B: { x: 50, y: 0 },    // width/2
+    ctrl:   { x: 0, y: -23 },   // 0, -height/2 - 8
+    mech:   { x: 0, y: 23 },    // 0, height/2 + 8
+  },
+  SINGLE_ACTING_CYLINDER: {
+    port_A: { x: -40, y: 0 },   // -width/2
+    ctrl:   { x: 0, y: -23 },   // 0, -height/2 - 8
+    mech:   { x: 0, y: 23 },    // 0, height/2 + 8
+  },
+  PRESSURE_SOURCE: {
+    out: { x: 24, y: 0 },       // r(18) + 6
+  },
+  TANK: {
+    out: { x: 0, y: -20 },      // 0, -h/2 - 10 (local h=20)
+  },
+  ORIFICE: {
+    in:  { x: -25, y: 0 },
+    out: { x: 25, y: 0 },
+  },
+  VARIABLE_ORIFICE: {
+    in:  { x: -25, y: 0 },
+    out: { x: 25, y: 0 },
+  },
+  CHECK_VALVE: {
+    in:  { x: -25, y: 0 },
+    out: { x: 25, y: 0 },
+  },
+  ONE_WAY_FLOW_CONTROL: {
+    in:  { x: -25, y: 0 },
+    out: { x: 25, y: 0 },
+  },
+  DCV_4_3: {
+    P:       { x: -15, y: 23 },   // -boxW*0.5, boxH/2 + 8
+    T:       { x: 15, y: 23 },    // boxW*0.5, boxH/2 + 8
+    A:       { x: -15, y: -23 },  // -boxW*0.5, -boxH/2 - 8
+    B:       { x: 15, y: -23 },   // boxW*0.5, -boxH/2 - 8
+    control: { x: -57, y: 0 },    // -totalW/2 - 12
+  },
+  DCV_5_2: {
+    P:       { x: -15, y: 23 },
+    T:       { x: 15, y: 23 },
+    A:       { x: -15, y: -23 },
+    B:       { x: 15, y: -23 },
+    control: { x: -57, y: 0 },
+  },
+  DCV_5_3: {
+    P:       { x: -15, y: 23 },
+    T:       { x: 15, y: 23 },
+    A:       { x: -15, y: -23 },
+    B:       { x: 15, y: -23 },
+    control: { x: -57, y: 0 },
+  },
+  DCV_3_2: {
+    P:       { x: -9, y: 23 },    // -boxW*0.3, boxH/2 + 8
+    T:       { x: 9, y: 23 },     // boxW*0.3, boxH/2 + 8
+    A:       { x: 0, y: -23 },    // 0, -boxH/2 - 8
+    control: { x: -38, y: 0 },    // -totalW/2 - 8
+  },
+  TEE_JUNCTION: {
+    p1: { x: -20, y: 0 },
+    p2: { x: 20, y: 0 },
+    p3: { x: 0, y: 20 },
+  },
+  CROSS_JUNCTION: {
+    p1: { x: -20, y: 0 },
+    p2: { x: 20, y: 0 },
+    p3: { x: 0, y: -20 },
+    p4: { x: 0, y: 20 },
+  },
+  HYDROPNEUMATIC_SPHERE: {
+    port: { x: 0, y: 28 },        // 0, r(18) + 10
+  },
+  PISTON_ACCUMULATOR: {
+    port: { x: 0, y: 23 },        // 0, h/2(15) + 8
+  },
+  BALLOON_SPHERICAL: {
+    port: { x: 0, y: 24 },        // 0, baseR(16) * 1 + 8
+  },
+  BALLOON_CYLINDRICAL: {
+    port: { x: 0, y: 15 },        // 0, baseH(14) / 2 + 8
+  },
+  SPRING: {
+    p1: { x: -30, y: 0 },         // -w/2(20) - 10
+    p2: { x: 30, y: 0 },          // w/2(20) + 10
+  },
+  MASS_LOAD: {
+    port: { x: 0, y: -16 },       // 0, -10 - 6
+  },
+  PUSH_BUTTON: {
+    signal_out: { x: 20, y: 0 },
+  },
+  TOGGLE_SWITCH: {
+    signal_out: { x: 24, y: 0 },
+  },
+  SLIDER_CONTROL: {
+    signal_out: { x: 26, y: 0 },
+  },
+  OSCILLATING_FORCE: {
+    mech: { x: 28, y: 0 },
+  },
+};
+
 export function getPortWorldPositions(
   type: ComponentType,
   cx: number,
@@ -1024,19 +1133,28 @@ export function getPortWorldPositions(
   ports: Array<{ id: string; side: string; offset: number }>,
   rotation: number = 0
 ): PortPosition[] {
+  const localPositions = PORT_LOCAL_POSITIONS[type];
   const size = COMPONENT_SIZES[type] ?? { width: 50, height: 30 };
   const hw = size.width / 2;
   const hh = size.height / 2;
 
   return ports.map((p) => {
-    // Compute port position in local (unrotated) coordinates relative to center
     let lx = 0;
     let ly = 0;
-    switch (p.side) {
-      case 'left':   lx = -hw - 6; ly = -hh + p.offset * size.height; break;
-      case 'right':  lx = hw + 6;  ly = -hh + p.offset * size.height; break;
-      case 'top':    lx = -hw + p.offset * size.width; ly = -hh - 8; break;
-      case 'bottom': lx = -hw + p.offset * size.width; ly = hh + 8; break;
+
+    // Use exact positions matching the drawing code when available,
+    // otherwise fall back to the generic side+offset formula
+    const exact = localPositions?.[p.id];
+    if (exact) {
+      lx = exact.x;
+      ly = exact.y;
+    } else {
+      switch (p.side) {
+        case 'left':   lx = -hw - 6; ly = -hh + p.offset * size.height; break;
+        case 'right':  lx = hw + 6;  ly = -hh + p.offset * size.height; break;
+        case 'top':    lx = -hw + p.offset * size.width; ly = -hh - 8; break;
+        case 'bottom': lx = -hw + p.offset * size.width; ly = hh + 8; break;
+      }
     }
 
     // Apply rotation around component center

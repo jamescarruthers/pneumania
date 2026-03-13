@@ -30,7 +30,6 @@ export interface CompiledConnection {
   inner_diameter: number;
   fluid_id: number;
   Zc: number;
-  is_mechanical: boolean;
 }
 
 export interface SignalRoute {
@@ -81,30 +80,21 @@ export class TLMSolverEngine implements Solver {
     for (const conn of c.connections) {
       const a = c.portsPrev[conn.port_a];
       const b = c.portsPrev[conn.port_b];
+      const fluid = c.fluids[conn.fluid_id];
+      const p_avg = 0.5 * (a.p + b.p);
+      const area =
+        Math.PI * conn.inner_diameter * conn.inner_diameter * 0.25;
+      const ws = waveSpeed(p_avg, fluid, c.params);
+      const beta = effectiveBulkModulus(p_avg, fluid, c.params);
+      const Zc = beta / (area * ws);
+      conn.Zc = Zc;
 
-      if (conn.is_mechanical) {
-        // Mechanical connections: pass force (p) directly, no hydraulic impedance
-        c.ports[conn.port_a].c = b.p;
-        c.ports[conn.port_a].Zc = 0;
-        c.ports[conn.port_b].c = a.p;
-        c.ports[conn.port_b].Zc = 0;
-      } else {
-        const fluid = c.fluids[conn.fluid_id];
-        const p_avg = 0.5 * (a.p + b.p);
-        const area =
-          Math.PI * conn.inner_diameter * conn.inner_diameter * 0.25;
-        const ws = waveSpeed(p_avg, fluid, c.params);
-        const beta = effectiveBulkModulus(p_avg, fluid, c.params);
-        const Zc = beta / (area * ws);
-        conn.Zc = Zc;
-
-        c.ports[conn.port_a].c = b.p + Zc * b.q;
-        c.ports[conn.port_a].Zc = Zc;
-        c.ports[conn.port_a].fluid_id = conn.fluid_id;
-        c.ports[conn.port_b].c = a.p + Zc * a.q;
-        c.ports[conn.port_b].Zc = Zc;
-        c.ports[conn.port_b].fluid_id = conn.fluid_id;
-      }
+      c.ports[conn.port_a].c = b.p + Zc * b.q;
+      c.ports[conn.port_a].Zc = Zc;
+      c.ports[conn.port_a].fluid_id = conn.fluid_id;
+      c.ports[conn.port_b].c = a.p + Zc * a.q;
+      c.ports[conn.port_b].Zc = Zc;
+      c.ports[conn.port_b].fluid_id = conn.fluid_id;
     }
 
     // Pass 2: C-type components
@@ -436,41 +426,23 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
       continue; // Don't create a TLM connection for signal wires
     }
 
-    // Detect mechanical-to-mechanical connections
-    const isMechanicalConn = mechanicalPortIndices.has(portA) && mechanicalPortIndices.has(portB);
+    const fluidId = connDef.line_params.fluid_id ?? def.default_fluid_id ?? 0;
+    const fluid = fluids[fluidId] || fluids[0];
+    const length = Math.max(connDef.line_params.length, 0.05); // min 50mm
+    const diameter = connDef.line_params.inner_diameter || 0.01;
+    const area = Math.PI * diameter * diameter * 0.25;
+    const ws = waveSpeed(params.p_atm, fluid, params);
+    const beta = effectiveBulkModulus(params.p_atm, fluid, params);
+    const Zc = beta / (area * ws);
 
-    if (isMechanicalConn) {
-      // Mechanical connections pass force/velocity directly (Zc = 0)
-      // — no hydraulic impedance or fluid properties apply.
-      connections.push({
-        port_a: portA,
-        port_b: portB,
-        line_length: 0,
-        inner_diameter: 0,
-        fluid_id: 0,
-        Zc: 0,
-        is_mechanical: true,
-      });
-    } else {
-      const fluidId = connDef.line_params.fluid_id ?? def.default_fluid_id ?? 0;
-      const fluid = fluids[fluidId] || fluids[0];
-      const length = Math.max(connDef.line_params.length, 0.05); // min 50mm
-      const diameter = connDef.line_params.inner_diameter || 0.01;
-      const area = Math.PI * diameter * diameter * 0.25;
-      const ws = waveSpeed(params.p_atm, fluid, params);
-      const beta = effectiveBulkModulus(params.p_atm, fluid, params);
-      const Zc = beta / (area * ws);
-
-      connections.push({
-        port_a: portA,
-        port_b: portB,
-        line_length: length,
-        inner_diameter: diameter,
-        fluid_id: fluidId,
-        Zc,
-        is_mechanical: false,
-      });
-    }
+    connections.push({
+      port_a: portA,
+      port_b: portB,
+      line_length: length,
+      inner_diameter: diameter,
+      fluid_id: fluidId,
+      Zc,
+    });
   }
 
   if (warnedMismatches.length > 0) {
@@ -479,10 +451,9 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     );
   }
 
-  // Compute dt from minimum line delay (skip mechanical connections — no propagation delay)
+  // Compute dt from minimum line delay
   let minDelay = Infinity;
   for (const conn of connections) {
-    if (conn.is_mechanical) continue;
     const fluid = fluids[conn.fluid_id] || fluids[0];
     const ws = waveSpeed(params.p_atm, fluid, params);
     const delay = conn.line_length / ws;

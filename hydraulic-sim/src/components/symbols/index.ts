@@ -29,22 +29,50 @@ const STROKE_COLOUR = '#c8d6e5';
 const STROKE_SELECTED = '#48dbfb';
 const FILL_COLOUR = '#2d3436';
 const PORT_COLOUR = '#feca57';
+const PORT_COLOUR_SIGNAL = '#48dbfb';
+const PORT_COLOUR_MECHANICAL = '#e17055';
 const PORT_RADIUS = 4;
+
+export type PortKind = 'hydraulic' | 'signal' | 'mechanical';
 
 function getStroke(selected: boolean): string {
   return selected ? STROKE_SELECTED : STROKE_COLOUR;
+}
+
+function portColour(kind: PortKind): string {
+  switch (kind) {
+    case 'signal': return PORT_COLOUR_SIGNAL;
+    case 'mechanical': return PORT_COLOUR_MECHANICAL;
+    default: return PORT_COLOUR;
+  }
 }
 
 // ============================================================
 // Drawing helpers
 // ============================================================
 
-function drawPort(ctx: CanvasRenderingContext2D, x: number, y: number, connected: boolean = false): void {
+function drawPort(ctx: CanvasRenderingContext2D, x: number, y: number, connected: boolean = false, kind: PortKind = 'hydraulic'): void {
+  const colour = portColour(kind);
   ctx.beginPath();
-  ctx.arc(x, y, PORT_RADIUS, 0, Math.PI * 2);
-  ctx.fillStyle = connected ? PORT_COLOUR : '#636e72';
+  if (kind === 'mechanical') {
+    // Diamond shape for mechanical ports
+    ctx.moveTo(x, y - PORT_RADIUS);
+    ctx.lineTo(x + PORT_RADIUS, y);
+    ctx.lineTo(x, y + PORT_RADIUS);
+    ctx.lineTo(x - PORT_RADIUS, y);
+    ctx.closePath();
+  } else if (kind === 'signal') {
+    // Small triangle for signal ports
+    ctx.moveTo(x - PORT_RADIUS, y + PORT_RADIUS);
+    ctx.lineTo(x + PORT_RADIUS, y + PORT_RADIUS);
+    ctx.lineTo(x, y - PORT_RADIUS);
+    ctx.closePath();
+  } else {
+    ctx.arc(x, y, PORT_RADIUS, 0, Math.PI * 2);
+  }
+  ctx.fillStyle = connected ? colour : '#636e72';
   ctx.fill();
-  ctx.strokeStyle = PORT_COLOUR;
+  ctx.strokeStyle = colour;
   ctx.lineWidth = 1;
   ctx.stroke();
 }
@@ -90,8 +118,26 @@ export function drawCylinderSymbol(sc: SymbolContext): void {
   ctx.stroke();
 
   // Ports
-  drawPort(ctx, -width / 2, 0);   // Port A
-  drawPort(ctx, width / 2, 0);    // Port B
+  drawPort(ctx, -width / 2, 0);   // Port A (hydraulic)
+  drawPort(ctx, width / 2, 0);    // Port B (hydraulic)
+
+  // Signal ctrl port (top)
+  ctx.beginPath();
+  ctx.moveTo(0, -height / 2);
+  ctx.lineTo(0, -height / 2 - 8);
+  ctx.strokeStyle = PORT_COLOUR_SIGNAL;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  drawPort(ctx, 0, -height / 2 - 8, false, 'signal');
+
+  // Mechanical port (bottom)
+  ctx.beginPath();
+  ctx.moveTo(0, height / 2);
+  ctx.lineTo(0, height / 2 + 8);
+  ctx.strokeStyle = PORT_COLOUR_MECHANICAL;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  drawPort(ctx, 0, height / 2 + 8, false, 'mechanical');
 
   // Labels
   ctx.fillStyle = '#b2bec3';
@@ -99,6 +145,10 @@ export function drawCylinderSymbol(sc: SymbolContext): void {
   ctx.textAlign = 'center';
   ctx.fillText('A', -width / 2, height / 2 + 12);
   ctx.fillText('B', width / 2, height / 2 + 12);
+  ctx.fillStyle = PORT_COLOUR_SIGNAL;
+  ctx.fillText('ctrl', 12, -height / 2 - 6);
+  ctx.fillStyle = PORT_COLOUR_MECHANICAL;
+  ctx.fillText('F', 8, height / 2 + 12);
 
   ctx.restore();
 }
@@ -320,6 +370,9 @@ export function drawDcv43Symbol(sc: SymbolContext): void {
   ctx.lineTo(totalW / 2 + 8, 4);
   ctx.stroke();
 
+  // Signal control port (left side)
+  drawPort(ctx, -totalW / 2 - 12, 0, false, 'signal');
+
   ctx.restore();
 }
 
@@ -424,6 +477,18 @@ export function drawDcv32Symbol(sc: SymbolContext): void {
   drawPort(ctx, -boxW * 0.3, boxH / 2 + 8);
   drawPort(ctx, boxW * 0.3, boxH / 2 + 8);
   drawPort(ctx, 0, -boxH / 2 - 8);
+
+  // Signal control port (left side)
+  ctx.strokeStyle = PORT_COLOUR_SIGNAL;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-totalW / 2 - 8, 0);
+  ctx.lineTo(-totalW / 2, 0);
+  ctx.moveTo(-totalW / 2 - 6, -3);
+  ctx.lineTo(-totalW / 2, 0);
+  ctx.lineTo(-totalW / 2 - 6, 3);
+  ctx.stroke();
+  drawPort(ctx, -totalW / 2 - 8, 0, false, 'signal');
 
   ctx.fillStyle = '#b2bec3';
   ctx.font = '9px monospace';
@@ -603,8 +668,8 @@ export function drawSpringSymbol(sc: SymbolContext): void {
   ctx.lineTo(w / 2 + 10, 0);
   ctx.stroke();
 
-  drawPort(ctx, -w / 2 - 10, 0);
-  drawPort(ctx, w / 2 + 10, 0);
+  drawPort(ctx, -w / 2 - 10, 0, false, 'mechanical');
+  drawPort(ctx, w / 2 + 10, 0, false, 'mechanical');
 
   ctx.restore();
 }
@@ -665,7 +730,7 @@ export function drawMassSymbol(sc: SymbolContext): void {
   ctx.textBaseline = 'middle';
   ctx.fillText('M', 0, 0);
 
-  drawPort(ctx, 0, -10 - 6);
+  drawPort(ctx, 0, -10 - 6, false, 'mechanical');
 
   ctx.restore();
 }
@@ -690,7 +755,7 @@ export function drawPushButtonSymbol(sc: SymbolContext): void {
   ctx.textBaseline = 'middle';
   ctx.fillText(pressed ? 'ON' : 'OFF', 0, 0);
 
-  drawPort(ctx, 20, 0);
+  drawPort(ctx, 20, 0, false, 'signal');
 
   ctx.restore();
 }
@@ -716,7 +781,7 @@ export function drawToggleSwitchSymbol(sc: SymbolContext): void {
   ctx.fillStyle = toggle ? '#00b894' : '#636e72';
   ctx.fill();
 
-  drawPort(ctx, 24, 0);
+  drawPort(ctx, 24, 0, false, 'signal');
 
   ctx.restore();
 }
@@ -757,8 +822,14 @@ export function drawOscillatingForceSymbol(sc: SymbolContext): void {
   ctx.fillStyle = forceValue >= 0 ? '#00b894' : '#d63031';
   ctx.fillRect(16, barDir > 0 ? 0 : -barHeight, 4, barHeight);
 
-  // Port
-  drawPort(ctx, 28, 0);
+  // Port (signal output)
+  drawPort(ctx, 28, 0, false, 'signal');
+
+  // Label
+  ctx.fillStyle = PORT_COLOUR_SIGNAL;
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('sig', 24, 14);
 
   ctx.restore();
 }
@@ -786,7 +857,7 @@ export function drawSliderSymbol(sc: SymbolContext): void {
   ctx.fillStyle = stroke;
   ctx.fill();
 
-  drawPort(ctx, 26, 0);
+  drawPort(ctx, 26, 0, false, 'signal');
 
   ctx.restore();
 }

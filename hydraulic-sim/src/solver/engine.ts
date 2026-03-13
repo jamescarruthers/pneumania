@@ -294,14 +294,9 @@ export class TLMSolverEngine implements Solver {
       this.circuit.portsPrev[i].Zc = isMech ? 0 : 1e6;
     }
     for (const comp of this.circuit.components) {
-      // Reset component-specific state
-      if (comp.type === 'DOUBLE_ACTING_CYLINDER' || comp.type === 'SINGLE_ACTING_CYLINDER') {
-        comp.state.position = 0;
-        comp.state.velocity = 0;
-      }
-      if (comp.type === 'DOUBLE_ACTING_CYLINDER') {
-        comp.state.p_cap_a = p_atm;
-        comp.state.p_cap_b = p_atm;
+      // Reset component state to its compiled initial snapshot
+      if (comp.initialState) {
+        comp.state = { ...comp.initialState };
       }
     }
     this.circuit.params.time = 0;
@@ -350,6 +345,7 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
       else if (typeof val === 'boolean') numericParams[key] = val ? 1 : 0;
     }
 
+    const state = initComponentState(compDef);
     components.push({
       id: compDef.id,
       type: compDef.type,
@@ -357,7 +353,8 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
       portStartIndex: portStart,
       portCount: compDef.ports.length,
       params: numericParams,
-      state: initComponentState(compDef),
+      state,
+      initialState: { ...state },
     });
   }
 

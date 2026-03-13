@@ -126,6 +126,7 @@ export interface ComponentInstance {
   portCount: number;
   params: Record<string, number>;
   state: Record<string, number>;
+  initialState?: Record<string, number>;
 }
 
 // ============================================================

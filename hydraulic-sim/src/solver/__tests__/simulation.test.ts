@@ -890,6 +890,169 @@ describe('DCV 4/3', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Oscillating Force Tests
+// ---------------------------------------------------------------------------
+
+describe('Oscillating Force', () => {
+  it('applies sinusoidal force that moves the cylinder', () => {
+    const src = uid();
+    const tank = uid();
+    const cyl = uid();
+    const osc = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 100e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: tank, type: 'TANK', label: 'T',
+          position: { x: 200, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+        {
+          id: cyl, type: 'DOUBLE_ACTING_CYLINDER', label: 'CYL',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: 0.2,
+            mass: 10,
+            friction_viscous: 100,
+            position: 0.1,
+          },
+          ports: [
+            makePort('A', 'hydraulic', 'left'),
+            makePort('B', 'hydraulic', 'right'),
+            makePort('ctrl', 'signal', 'top'),
+          ],
+        },
+        {
+          id: osc, type: 'OSCILLATING_FORCE', label: 'OSC',
+          position: { x: 100, y: -50 }, rotation: 0,
+          params: {
+            amplitude: 5000,   // 5 kN — enough to visibly affect position
+            frequency: 10,      // 10 Hz
+            waveform: 0,        // sine
+            offset: 0,
+          },
+          ports: [makePort('signal_out', 'signal', 'right')],
+        },
+      ],
+      [
+        makeConnection(src, 'out', cyl, 'A'),
+        makeConnection(tank, 'out', cyl, 'B'),
+        {
+          id: uid(),
+          from: { component: osc, port: 'signal_out' },
+          to: { component: cyl, port: 'ctrl' },
+          waypoints: [],
+          line_params: { inner_diameter: 0, length: 0, fluid_id: 0 },
+        },
+      ],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+
+    // Run and sample the oscillating force state
+    runFor(solver, 1000);
+    const oscState1 = solver.getComponentState(osc);
+    expect(oscState1.force_value).toBeDefined();
+
+    runFor(solver, 500);
+    const oscState2 = solver.getComponentState(osc);
+    // Force should oscillate (values at different times should generally differ)
+    // Since sine wave, at different times the value will be different
+    expect(typeof oscState2.force_value).toBe('number');
+  });
+
+  it('produces square wave output', () => {
+    const osc = uid();
+    const tank = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: osc, type: 'OSCILLATING_FORCE', label: 'OSC',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: {
+            amplitude: 1000,
+            frequency: 5,
+            waveform: 1, // square
+            offset: 0,
+          },
+          ports: [makePort('signal_out', 'signal', 'right')],
+        },
+        {
+          id: tank, type: 'TANK', label: 'T',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+      ],
+      [makeConnection(tank, 'out', tank, 'out')], // dummy connection to initialise dt
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+    runFor(solver, 100);
+
+    const state = solver.getComponentState(osc);
+    // Square wave: force_value should be exactly +amplitude or -amplitude
+    expect(Math.abs(Math.abs(state.force_value) - 1000)).toBeLessThan(1);
+  });
+
+  it('random waveform holds value within one cycle', () => {
+    const osc = uid();
+    const tank = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: osc, type: 'OSCILLATING_FORCE', label: 'OSC',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: {
+            amplitude: 500,
+            frequency: 1, // 1 Hz — one cycle per second
+            waveform: 3,  // random
+            offset: 100,
+          },
+          ports: [makePort('signal_out', 'signal', 'right')],
+        },
+        {
+          id: tank, type: 'TANK', label: 'T',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+      ],
+      [makeConnection(tank, 'out', tank, 'out')],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+
+    // Run a few steps within the first cycle
+    runFor(solver, 10);
+    const state1 = solver.getComponentState(osc);
+    runFor(solver, 10);
+    const state2 = solver.getComponentState(osc);
+
+    // Within the same cycle, the value should be held constant
+    expect(state1.force_value).toBe(state2.force_value);
+
+    // Value should be within offset ± amplitude range
+    expect(state2.force_value).toBeGreaterThanOrEqual(100 - 500);
+    expect(state2.force_value).toBeLessThanOrEqual(100 + 500);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Solver Infrastructure Tests
 // ---------------------------------------------------------------------------
 

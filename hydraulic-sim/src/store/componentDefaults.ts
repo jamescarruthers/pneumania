@@ -87,6 +87,7 @@ export function getDefaultPorts(type: ComponentType): PortDef[] {
     case 'PUSH_BUTTON':
     case 'TOGGLE_SWITCH':
     case 'SLIDER_CONTROL':
+    case 'OSCILLATING_FORCE':
       return [
         { id: 'signal_out', type: 'signal', side: 'right', offset: 0.5 },
       ];
@@ -250,6 +251,14 @@ export function getDefaultParams(type: ComponentType): Record<string, number | s
 
     case 'SLIDER_CONTROL':
       return { min_value: 0, max_value: 1, initial_value: 0.5 };
+
+    case 'OSCILLATING_FORCE':
+      return {
+        amplitude: 1000,    // N
+        frequency: 5,        // Hz
+        waveform: 0,         // 0=sine, 1=square, 2=triangle, 3=random
+        offset: 0,           // N (DC offset)
+      };
 
     case 'TLM_LINE':
       return { volume: 1e-6, fluid_id: 0 };

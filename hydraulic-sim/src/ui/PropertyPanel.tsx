@@ -234,7 +234,7 @@ function formatStateValue(key: string, val: number): string {
   if (key === 'position') return `${(val * 1000).toFixed(1)} mm`;
   if (key === 'velocity') return `${(val * 1000).toFixed(1)} mm/s`;
   if (key === 'piston_position') return `${(val * 1000).toFixed(1)} mm`;
-  if (key.includes('pressure')) return formatPressure(val);
+  if (key.includes('pressure') || key.startsWith('p_cap')) return formatPressure(val);
   return val.toFixed(4);
 }
 

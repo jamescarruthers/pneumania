@@ -85,7 +85,13 @@ export class TLMSolverEngine implements Solver {
 
       if (conn.is_mechanical) {
         // Mechanical: pass force (p) directly, Zc = 0.
-        // Hydraulic coupling happens inside the cylinder model, not here.
+        // This is a rigid (zero-delay) connection — equivalent to explicit Euler
+        // coupling across one timestep. It is conditionally stable: the product
+        // ω_n·Δt must remain below 2, where ω_n = sqrt(k/m) for a spring-mass
+        // pair.  Highly stiff springs with low masses will violate this limit
+        // and cause divergence.  A future improvement is to introduce a
+        // mechanical C-type transmission line with Zm = sqrt(k·m) so that the
+        // TLM unconditional-stability guarantee extends to the mechanical domain.
         c.ports[conn.port_a].c = b.p;
         c.ports[conn.port_a].Zc = 0;
         c.ports[conn.port_b].c = a.p;

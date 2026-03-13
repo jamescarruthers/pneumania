@@ -50,6 +50,7 @@ export interface CompiledCircuit {
   cComponents: ComponentInstance[];
   qComponents: ComponentInstance[];
   sComponents: ComponentInstance[];
+  mechanicalPortIndices: Set<number>;
   params: SimParams;
 }
 
@@ -265,17 +266,19 @@ export class TLMSolverEngine implements Solver {
 
   reset(): void {
     if (!this.circuit) return;
-    for (const port of this.circuit.ports) {
-      port.p = 101325;
-      port.q = 0;
-      port.c = 101325;
-      port.Zc = 1e6;
+    for (let i = 0; i < this.circuit.ports.length; i++) {
+      const isMech = this.circuit.mechanicalPortIndices.has(i);
+      this.circuit.ports[i].p = isMech ? 0 : 101325;
+      this.circuit.ports[i].q = 0;
+      this.circuit.ports[i].c = isMech ? 0 : 101325;
+      this.circuit.ports[i].Zc = isMech ? 0 : 1e6;
     }
-    for (const port of this.circuit.portsPrev) {
-      port.p = 101325;
-      port.q = 0;
-      port.c = 101325;
-      port.Zc = 1e6;
+    for (let i = 0; i < this.circuit.portsPrev.length; i++) {
+      const isMech = this.circuit.mechanicalPortIndices.has(i);
+      this.circuit.portsPrev[i].p = isMech ? 0 : 101325;
+      this.circuit.portsPrev[i].q = 0;
+      this.circuit.portsPrev[i].c = isMech ? 0 : 101325;
+      this.circuit.portsPrev[i].Zc = isMech ? 0 : 1e6;
     }
     for (const comp of this.circuit.components) {
       // Reset component-specific state
@@ -310,12 +313,16 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
   let portIndex = 0;
   const componentPortMap: Map<string, Map<string, number>> = new Map();
   const components: ComponentInstance[] = [];
+  const mechanicalPortIndices = new Set<number>();
 
   for (const compDef of def.components) {
     const portMap = new Map<string, number>();
     const portStart = portIndex;
     for (const portDef of compDef.ports) {
       portMap.set(portDef.id, portIndex);
+      if (portDef.type === 'mechanical') {
+        mechanicalPortIndices.add(portIndex);
+      }
       portIndex++;
     }
     componentPortMap.set(compDef.id, portMap);
@@ -340,6 +347,17 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
   // Create port buffers
   const ports: PortState[] = Array.from({ length: portIndex }, createDefaultPort);
   const portsPrev: PortState[] = Array.from({ length: portIndex }, createDefaultPort);
+
+  // Mechanical-domain ports use force/velocity, not pressure/flow.
+  // Initialize them to zero so unconnected mech ports don't inject phantom forces.
+  for (const idx of mechanicalPortIndices) {
+    ports[idx].p = 0;
+    ports[idx].c = 0;
+    ports[idx].Zc = 0;
+    portsPrev[idx].p = 0;
+    portsPrev[idx].c = 0;
+    portsPrev[idx].Zc = 0;
+  }
 
   // Build port type lookup: "componentId:portId" -> PortType
   const portTypeLookup = new Map<string, string>();
@@ -466,6 +484,7 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     cComponents,
     qComponents,
     sComponents,
+    mechanicalPortIndices,
     params,
   };
 }

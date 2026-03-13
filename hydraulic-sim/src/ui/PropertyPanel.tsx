@@ -3,9 +3,7 @@ import { useCircuitStore } from '../store/circuitStore';
 import { useSimulationStore } from '../store/simulationStore';
 import { useUIStore } from '../store/uiStore';
 import { formatPressure } from '../utils/units';
-import type { PortType } from '../solver/types';
-
-const MIN_LENGTH = 0.05; // Must match solver clamp in engine.ts
+import { type PortType, MIN_LINE_LENGTH } from '../solver/types';
 
 function NumericInput({
   value,
@@ -28,9 +26,9 @@ function NumericInput({
   }, [value, focused]);
 
   const commit = useCallback(() => {
-    const num = parseFloat(draft);
-    const minVal = parseFloat(min);
-    if (!isNaN(num) && num >= minVal) {
+    const num = Number(draft);
+    const minVal = Number(min);
+    if (Number.isFinite(num) && num >= minVal) {
       onChange(num);
     } else {
       setDraft(String(value));
@@ -53,15 +51,11 @@ function NumericInput({
   );
 }
 
-function getConnectionPortTypes(
-  circuit: ReturnType<typeof useCircuitStore.getState>['circuit'],
-  conn: { from: { component: string; port: string }; to: { component: string; port: string } },
-): { fromType: PortType | undefined; toType: PortType | undefined } {
-  const fromComp = circuit.components.find((c) => c.id === conn.from.component);
-  const toComp = circuit.components.find((c) => c.id === conn.to.component);
-  const fromPort = fromComp?.ports.find((p) => p.id === conn.from.port);
-  const toPort = toComp?.ports.find((p) => p.id === conn.to.port);
-  return { fromType: fromPort?.type, toType: toPort?.type };
+function getPortType(
+  comp: { ports: Array<{ id: string; type: PortType }> } | undefined,
+  portId: string,
+): PortType | undefined {
+  return comp?.ports.find((p) => p.id === portId)?.type;
 }
 
 export function PropertyPanel() {
@@ -89,7 +83,8 @@ export function PropertyPanel() {
     const fromComp = circuit.components.find((c) => c.id === conn.from.component);
     const toComp = circuit.components.find((c) => c.id === conn.to.component);
     const connLabel = `${fromComp?.label || '?'} → ${toComp?.label || '?'}`;
-    const { fromType, toType } = getConnectionPortTypes(circuit, conn);
+    const fromType = getPortType(fromComp, conn.from.port);
+    const toType = getPortType(toComp, conn.to.port);
     const isHydraulic = fromType === 'hydraulic' && toType === 'hydraulic';
 
     return (
@@ -120,7 +115,7 @@ export function PropertyPanel() {
                 onChange={(v) => updateConnectionLength(conn.id, v)}
                 disabled={running}
                 step="0.1"
-                min={String(MIN_LENGTH)}
+                min={String(MIN_LINE_LENGTH)}
               />
               <span style={styles.unit}>m</span>
             </div>
@@ -128,9 +123,11 @@ export function PropertyPanel() {
         ) : (
           <div style={styles.section}>
             <div style={{ ...styles.fieldLabel, padding: '4px 0', color: '#636e72', fontSize: 11 }}>
-              {fromType === toType
-                ? `${fromType} connection — pipe parameters do not apply`
-                : `Cross-domain connection (${fromType} → ${toType}) — pipe parameters do not apply`}
+              {!fromType || !toType
+                ? 'Non-hydraulic connection — pipe parameters do not apply'
+                : fromType === toType
+                  ? `${fromType} connection — pipe parameters do not apply`
+                  : `Cross-domain connection (${fromType} → ${toType}) — pipe parameters do not apply`}
             </div>
           </div>
         )}

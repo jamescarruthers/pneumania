@@ -14,6 +14,7 @@ import {
   type CircuitDefinition,
   type Solver,
   COMPONENT_TLM_CLASS,
+  MIN_LINE_LENGTH,
 } from './types';
 import {
   effectiveBulkModulus,
@@ -472,7 +473,7 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     } else {
       const fluidId = connDef.line_params.fluid_id ?? def.default_fluid_id ?? 0;
       const fluid = fluids[fluidId] || fluids[0];
-      const length = Math.max(connDef.line_params.length, 0.05); // min 50mm
+      const length = Math.max(connDef.line_params.length, MIN_LINE_LENGTH);
       const diameter = connDef.line_params.inner_diameter || 0.01;
       const area = Math.PI * diameter * diameter * 0.25;
       const ws = waveSpeed(params.p_atm, fluid, params);

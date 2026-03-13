@@ -210,3 +210,6 @@ export const MAX_COMPONENTS = 1024;
 export const MAX_PORTS = 4096;
 export const MAX_CONNECTIONS = 2048;
 export const MAX_FLUIDS = 16;
+
+/** Minimum transmission line length (m) — used in solver, store, and UI. */
+export const MIN_LINE_LENGTH = 0.05;

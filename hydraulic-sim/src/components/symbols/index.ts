@@ -1133,16 +1133,30 @@ const PORT_LOCAL_POSITIONS: Record<string, Record<string, { x: number; y: number
 export function getPortOutwardDir(
   type: ComponentType,
   portId: string,
-  rotation: number = 0
+  rotation: number = 0,
+  ports?: Array<{ id: string; side: string; offset: number }>
 ): { dx: number; dy: number } {
   const local = PORT_LOCAL_POSITIONS[type]?.[portId];
-  if (!local) return { dx: 0, dy: -1 };
 
-  const len = Math.sqrt(local.x * local.x + local.y * local.y);
-  if (len < 0.001) return { dx: 0, dy: -1 };
+  let dx: number;
+  let dy: number;
 
-  let dx = local.x / len;
-  let dy = local.y / len;
+  if (local) {
+    const len = Math.sqrt(local.x * local.x + local.y * local.y);
+    if (len < 0.001) return { dx: 0, dy: -1 };
+    dx = local.x / len;
+    dy = local.y / len;
+  } else {
+    // Fall back to the port's declared side (matching getPortWorldPositions)
+    const portDef = ports?.find((p) => p.id === portId);
+    switch (portDef?.side) {
+      case 'left':   dx = -1; dy = 0; break;
+      case 'right':  dx = 1;  dy = 0; break;
+      case 'top':    dx = 0;  dy = -1; break;
+      case 'bottom': dx = 0;  dy = 1; break;
+      default:       dx = 0;  dy = -1; break;
+    }
+  }
 
   // Apply same rotation transform as port positions
   if (rotation === 90) {

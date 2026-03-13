@@ -1,9 +1,10 @@
 import { create } from 'zustand';
-import type {
-  CircuitDefinition,
-  ComponentDef,
-  ConnectionDef,
-  ComponentType,
+import {
+  type CircuitDefinition,
+  type ComponentDef,
+  type ConnectionDef,
+  type ComponentType,
+  MIN_LINE_LENGTH,
 } from '../solver/types';
 import { getDefaultFluid } from '../fluid/presets';
 import { uuid } from '../utils/uuid';
@@ -195,7 +196,7 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
   },
 
   updateConnectionLength: (id, length) => {
-    const clamped = Math.max(length, 0.05); // Match solver minimum (engine.ts)
+    const clamped = Math.max(length, MIN_LINE_LENGTH);
     set((state) => ({
       circuit: {
         ...state.circuit,

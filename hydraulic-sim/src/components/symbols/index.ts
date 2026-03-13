@@ -70,7 +70,7 @@ export function drawCylinderSymbol(sc: SymbolContext): void {
   // Piston position (animated)
   const position = state?.position ?? 0;
   const stroke_length = (sc.params?.stroke_length as number) ?? 0.2;
-  const pistonRatio = stroke_length > 0 ? position / stroke_length : 0;
+  const pistonRatio = stroke_length > 0 ? Math.max(0, Math.min(1, position / stroke_length)) : 0;
   const pistonX = -width / 2 + 8 + pistonRatio * (width - 24);
 
   // Piston line

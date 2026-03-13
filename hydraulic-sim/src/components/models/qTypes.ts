@@ -25,6 +25,8 @@ export function updateDoubleActingCylinder(
 ): void {
   const portA = ports[comp.portStartIndex];
   const portB = ports[comp.portStartIndex + 1];
+  // Port index 2 is ctrl (signal), index 3 is mech (mechanical)
+  const portMech = ports[comp.portStartIndex + 3];
 
   const bore = comp.params.bore_diameter ?? 0.05;
   const rod = comp.params.rod_diameter ?? 0.025;
@@ -43,10 +45,14 @@ export function updateDoubleActingCylinder(
   const c_B = portB.c;
   const Zc_B = portB.Zc;
 
+  // Mechanical port force (from connected spring/mass)
+  const F_mech = portMech ? portMech.c : 0;
+  const Zc_mech = portMech ? portMech.Zc : 0;
+
   // TLM-coupled Newton's second law
-  const hydraulicStiffness = Zc_A * A_cap * A_cap + Zc_B * A_rod * A_rod;
+  const hydraulicStiffness = Zc_A * A_cap * A_cap + Zc_B * A_rod * A_rod + Zc_mech;
   const F_wave = c_A * A_cap - c_B * A_rod;
-  const F_ext = externalForce + (comp.params.external_force ?? 0) + (comp.state.signal_input ?? 0);
+  const F_ext = externalForce + (comp.params.external_force ?? 0) + (comp.state.signal_input ?? 0) + F_mech;
 
   const denom = mass / params.dt + hydraulicStiffness + frictionViscous;
   let v_new = (mass * velocity / params.dt + F_wave + F_ext) / denom;
@@ -74,6 +80,12 @@ export function updateDoubleActingCylinder(
   portB.p = p_B;
   portB.q = q_B;
 
+  // Mechanical port: output piston velocity and reaction force
+  if (portMech) {
+    portMech.q = v_new;
+    portMech.p = F_mech - Zc_mech * v_new;
+  }
+
   comp.state.position = x_new;
   comp.state.velocity = v_new;
 }
@@ -90,6 +102,8 @@ export function updateSingleActingCylinder(
   externalForce: number = 0
 ): void {
   const portA = ports[comp.portStartIndex];
+  // Port index 1 is ctrl (signal), index 2 is mech (mechanical)
+  const portMech = ports[comp.portStartIndex + 2];
 
   const bore = comp.params.bore_diameter ?? 0.05;
   const rod = comp.params.rod_diameter ?? 0.025;
@@ -108,13 +122,17 @@ export function updateSingleActingCylinder(
   const c_A = portA.c;
   const Zc_A = portA.Zc;
 
+  // Mechanical port force (from connected spring/mass)
+  const F_mech = portMech ? portMech.c : 0;
+  const Zc_mech = portMech ? portMech.Zc : 0;
+
   // Spring return force + atmospheric pressure on rod side
   const F_spring = -(springRate * position + springPreload);
   const F_atm = -P_ATM * A_rod;
-  const F_ext = externalForce + (comp.params.external_force ?? 0) + (comp.state.signal_input ?? 0);
+  const F_ext = externalForce + (comp.params.external_force ?? 0) + (comp.state.signal_input ?? 0) + F_mech;
 
   // Semi-implicit: include spring stiffness in denominator for stability
-  const hydraulicStiffness = Zc_A * A_cap * A_cap;
+  const hydraulicStiffness = Zc_A * A_cap * A_cap + Zc_mech;
   const springStiffness = springRate * params.dt;
   const denom = mass / params.dt + hydraulicStiffness + frictionViscous + springStiffness;
   let v_new = (mass * velocity / params.dt + c_A * A_cap + F_spring + F_atm + F_ext) / denom;
@@ -129,6 +147,12 @@ export function updateSingleActingCylinder(
 
   portA.p = p_A;
   portA.q = q_A;
+
+  // Mechanical port: output piston velocity and reaction force
+  if (portMech) {
+    portMech.q = v_new;
+    portMech.p = F_mech - Zc_mech * v_new;
+  }
 
   comp.state.position = x_new;
   comp.state.velocity = v_new;

@@ -130,9 +130,11 @@ export function updateDoubleActingCylinder(
   const p_A = c_A - Zc_A * q_A;
   const p_B = c_B - Zc_B * q_B;
 
+  // Always store chamber pressures so the UI can display them.
+  comp.state.p_cap_a = Math.max(p_A, 0);
+  comp.state.p_cap_b = Math.max(p_B, 0);
+
   if (capA) {
-    // Update trapped pressure for next step
-    comp.state.p_cap_a = Math.max(p_A, 0);
     portA.p = p_A;
     portA.q = 0;   // no external flow — port is capped
   } else {
@@ -141,7 +143,6 @@ export function updateDoubleActingCylinder(
   }
 
   if (capB) {
-    comp.state.p_cap_b = Math.max(p_B, 0);
     portB.p = p_B;
     portB.q = 0;
   } else {

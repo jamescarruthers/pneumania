@@ -11,7 +11,6 @@ import {
   type FluidDef,
   type ComponentInstance,
   DEFAULT_SIM_PARAMS,
-  P_ATM,
   type CircuitDefinition,
   type Solver,
   COMPONENT_TLM_CLASS,
@@ -56,8 +55,8 @@ export interface CompiledCircuit {
   params: SimParams;
 }
 
-function createDefaultPort(): PortState {
-  return { p: P_ATM, q: 0, c: P_ATM, Zc: 1e6, fluid_id: 0 };
+function createDefaultPort(p_atm: number = DEFAULT_SIM_PARAMS.p_atm): PortState {
+  return { p: p_atm, q: 0, c: p_atm, Zc: 1e6, fluid_id: 0 };
 }
 
 export class TLMSolverEngine implements Solver {
@@ -278,18 +277,19 @@ export class TLMSolverEngine implements Solver {
 
   reset(): void {
     if (!this.circuit) return;
+    const p_atm = this.circuit.params.p_atm;
     for (let i = 0; i < this.circuit.ports.length; i++) {
       const isMech = this.circuit.mechanicalPortIndices.has(i);
-      this.circuit.ports[i].p = isMech ? 0 : P_ATM;
+      this.circuit.ports[i].p = isMech ? 0 : p_atm;
       this.circuit.ports[i].q = 0;
-      this.circuit.ports[i].c = isMech ? 0 : P_ATM;
+      this.circuit.ports[i].c = isMech ? 0 : p_atm;
       this.circuit.ports[i].Zc = isMech ? 0 : 1e6;
     }
     for (let i = 0; i < this.circuit.portsPrev.length; i++) {
       const isMech = this.circuit.mechanicalPortIndices.has(i);
-      this.circuit.portsPrev[i].p = isMech ? 0 : P_ATM;
+      this.circuit.portsPrev[i].p = isMech ? 0 : p_atm;
       this.circuit.portsPrev[i].q = 0;
-      this.circuit.portsPrev[i].c = isMech ? 0 : P_ATM;
+      this.circuit.portsPrev[i].c = isMech ? 0 : p_atm;
       this.circuit.portsPrev[i].Zc = isMech ? 0 : 1e6;
     }
     for (const comp of this.circuit.components) {
@@ -299,8 +299,8 @@ export class TLMSolverEngine implements Solver {
         comp.state.velocity = 0;
       }
       if (comp.type === 'DOUBLE_ACTING_CYLINDER') {
-        comp.state.p_cap_a = DEFAULT_SIM_PARAMS.p_atm;
-        comp.state.p_cap_b = DEFAULT_SIM_PARAMS.p_atm;
+        comp.state.p_cap_a = p_atm;
+        comp.state.p_cap_b = p_atm;
       }
     }
     this.circuit.params.time = 0;
@@ -361,8 +361,8 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
   }
 
   // Create port buffers
-  const ports: PortState[] = Array.from({ length: portIndex }, createDefaultPort);
-  const portsPrev: PortState[] = Array.from({ length: portIndex }, createDefaultPort);
+  const ports: PortState[] = Array.from({ length: portIndex }, () => createDefaultPort(params.p_atm));
+  const portsPrev: PortState[] = Array.from({ length: portIndex }, () => createDefaultPort(params.p_atm));
 
   // Mechanical-domain ports use force/velocity, not pressure/flow.
   // Initialize them to zero so unconnected mech ports don't inject phantom forces.

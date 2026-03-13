@@ -959,19 +959,23 @@ describe('Oscillating Force', () => {
     const solver = new TLMSolverEngine();
     solver.init(circuit);
 
-    // Run and sample the oscillating force state
-    runFor(solver, 1000);
+    // Run and sample the oscillating force at two times that land on
+    // different phases of the 10 Hz sine wave.  With dt ≈ 1e-4 the period
+    // is ~1000 steps; we deliberately pick step counts that avoid zero-
+    // crossings (multiples of 500 steps) so the force values are non-zero
+    // and distinct.
+    runFor(solver, 1100);                         // phase ≈ 2.2π → sin ≠ 0
     const oscState1 = solver.getComponentState(osc);
     const cylState1 = solver.getComponentState(cyl);
     expect(oscState1.force_value).toBeDefined();
 
-    runFor(solver, 500);
+    runFor(solver, 300);                          // phase ≈ 2.8π → sin ≠ 0, different sign
     const oscState2 = solver.getComponentState(osc);
     const cylState2 = solver.getComponentState(cyl);
-    // Force should oscillate (values at different times should generally differ)
-    expect(oscState1.force_value).not.toBe(oscState2.force_value);
-    // Cylinder position or velocity should have changed from initial values
-    expect(cylState1.position !== 0.1 || cylState2.position !== 0.1).toBe(true);
+    // Force values at different phases must differ by more than FP noise
+    expect(Math.abs(oscState1.force_value - oscState2.force_value)).toBeGreaterThan(1);
+    // Cylinder should have moved away from its initial position (0.1)
+    expect(Math.abs(cylState1.position - 0.1)).toBeGreaterThan(1e-6);
   });
 
   it('produces square wave output', () => {

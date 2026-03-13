@@ -1126,6 +1126,41 @@ const PORT_LOCAL_POSITIONS: Record<string, Record<string, { x: number; y: number
   },
 };
 
+/**
+ * Get the outward-facing unit vector for a port, accounting for rotation.
+ * Used to direct bezier control points away from the component.
+ */
+export function getPortOutwardDir(
+  type: ComponentType,
+  portId: string,
+  rotation: number = 0
+): { dx: number; dy: number } {
+  const local = PORT_LOCAL_POSITIONS[type]?.[portId];
+  if (!local) return { dx: 0, dy: -1 };
+
+  const len = Math.sqrt(local.x * local.x + local.y * local.y);
+  if (len < 0.001) return { dx: 0, dy: -1 };
+
+  let dx = local.x / len;
+  let dy = local.y / len;
+
+  // Apply same rotation transform as port positions
+  if (rotation === 90) {
+    const tmp = dx;
+    dx = -dy;
+    dy = tmp;
+  } else if (rotation === 180) {
+    dx = -dx;
+    dy = -dy;
+  } else if (rotation === 270) {
+    const tmp = dx;
+    dx = dy;
+    dy = -tmp;
+  }
+
+  return { dx, dy };
+}
+
 export function getPortWorldPositions(
   type: ComponentType,
   cx: number,

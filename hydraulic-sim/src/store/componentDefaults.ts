@@ -10,11 +10,13 @@ export function getDefaultPorts(type: ComponentType): PortDef[] {
       return [
         { id: 'port_A', type: 'hydraulic', side: 'left', offset: 0.5, label: 'A (cap)' },
         { id: 'port_B', type: 'hydraulic', side: 'right', offset: 0.5, label: 'B (rod)' },
+        { id: 'ctrl', type: 'signal', side: 'top', offset: 0.5, label: 'Ctrl' },
       ];
 
     case 'SINGLE_ACTING_CYLINDER':
       return [
         { id: 'port_A', type: 'hydraulic', side: 'left', offset: 0.5, label: 'A (cap)' },
+        { id: 'ctrl', type: 'signal', side: 'top', offset: 0.5, label: 'Ctrl' },
       ];
 
     case 'ORIFICE':

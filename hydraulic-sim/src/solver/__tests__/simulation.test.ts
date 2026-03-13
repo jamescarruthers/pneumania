@@ -962,18 +962,20 @@ describe('Oscillating Force', () => {
     // Run and sample the oscillating force state
     runFor(solver, 1000);
     const oscState1 = solver.getComponentState(osc);
+    const cylState1 = solver.getComponentState(cyl);
     expect(oscState1.force_value).toBeDefined();
 
     runFor(solver, 500);
     const oscState2 = solver.getComponentState(osc);
+    const cylState2 = solver.getComponentState(cyl);
     // Force should oscillate (values at different times should generally differ)
-    // Since sine wave, at different times the value will be different
-    expect(typeof oscState2.force_value).toBe('number');
+    expect(oscState1.force_value).not.toBe(oscState2.force_value);
+    // Cylinder position or velocity should have changed from initial values
+    expect(cylState1.position !== 0.1 || cylState2.position !== 0.1).toBe(true);
   });
 
   it('produces square wave output', () => {
     const osc = uid();
-    const tank = uid();
 
     const circuit = makeCircuit(
       [
@@ -988,14 +990,8 @@ describe('Oscillating Force', () => {
           },
           ports: [makePort('signal_out', 'signal', 'right')],
         },
-        {
-          id: tank, type: 'TANK', label: 'T',
-          position: { x: 100, y: 0 }, rotation: 0,
-          params: {},
-          ports: [makePort('out')],
-        },
       ],
-      [makeConnection(tank, 'out', tank, 'out')], // dummy connection to initialise dt
+      [], // no hydraulic connections needed; solver falls back to default dt
     );
 
     const solver = new TLMSolverEngine();
@@ -1009,7 +1005,6 @@ describe('Oscillating Force', () => {
 
   it('random waveform holds value within one cycle', () => {
     const osc = uid();
-    const tank = uid();
 
     const circuit = makeCircuit(
       [
@@ -1024,14 +1019,8 @@ describe('Oscillating Force', () => {
           },
           ports: [makePort('signal_out', 'signal', 'right')],
         },
-        {
-          id: tank, type: 'TANK', label: 'T',
-          position: { x: 100, y: 0 }, rotation: 0,
-          params: {},
-          ports: [makePort('out')],
-        },
       ],
-      [makeConnection(tank, 'out', tank, 'out')],
+      [], // no hydraulic connections needed; solver falls back to default dt
     );
 
     const solver = new TLMSolverEngine();

@@ -971,7 +971,7 @@ describe('Oscillating Force', () => {
 
     runFor(solver, 300);                          // phase ≈ 2.8π → sin ≠ 0, different sign
     const oscState2 = solver.getComponentState(osc);
-    const cylState2 = solver.getComponentState(cyl);
+    const _cylState2 = solver.getComponentState(cyl);
     // Force values at different phases must differ by more than FP noise
     expect(Math.abs(oscState1.force_value - oscState2.force_value)).toBeGreaterThan(1);
     // Cylinder should have moved away from its initial position (0.1)

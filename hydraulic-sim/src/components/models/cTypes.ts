@@ -77,19 +77,35 @@ export function updateTlmLine(
   const fluid = fluids[fluidId] || fluids[0];
   const volume = comp.params.volume ?? 1e-6; // 1 mL default
 
-  // Use persistent internal pressure state instead of averaging port pressures
   let p_internal = comp.state.p_internal ?? P_ATM;
   const beta = effectiveBulkModulus(p_internal, fluid, params);
-  const Zc = (beta * params.dt) / (2 * volume);
+  const C = volume / beta; // hydraulic compliance
+  const Zc = params.dt / (2.0 * C);
 
-  // Pressure update from net flow
-  const q_net = p1.q + p2.q; // positive = into volume
-  p_internal += (beta * params.dt / volume) * q_net;
-  comp.state.p_internal = p_internal;
+  // Semi-implicit pressure update from incident waves on both ports.
+  // For each port: q_in_i = (c_i - p_new) / Zc_line_i
+  // Net flow into volume: q_net = sum(q_in_i)
+  // Pressure update: p_new = p_old + (dt / C) * q_net
+  // Solving implicitly for p_new:
+  const Zc1 = Math.max(p1.Zc, 1e-6);
+  const Zc2 = Math.max(p2.Zc, 1e-6);
+  const sumInvZ = 1.0 / Zc1 + 1.0 / Zc2;
+  const coeff = params.dt / C;
+  const p_new = (p_internal + coeff * (p1.c / Zc1 + p2.c / Zc2)) / (1.0 + coeff * sumInvZ);
+  comp.state.p_internal = p_new;
 
-  p1.c = p_internal + Zc * p1.q;
+  // Realized flows into the volume from each port
+  const q1 = (p1.c - p_new) / Zc1;
+  const q2 = (p2.c - p_new) / Zc2;
+
+  // Write wave variables and port states
+  p1.p = p_new;
+  p1.q = -q1; // outflow convention
+  p1.c = p_new + Zc * p1.q;
   p1.Zc = Zc;
-  p2.c = p_internal + Zc * p2.q;
+  p2.p = p_new;
+  p2.q = -q2;
+  p2.c = p_new + Zc * p2.q;
   p2.Zc = Zc;
 }
 
@@ -108,24 +124,36 @@ export function updateTeeJunction(
   const fluid = fluids[fluidId] || fluids[0];
   let p_junction = comp.state.p_junction ?? P_ATM;
 
-  // Sum flows into junction
-  let q_net = 0;
-  for (let i = 0; i < comp.portCount; i++) {
-    q_net += ports[comp.portStartIndex + i].q;
-  }
-
   const beta = effectiveBulkModulus(p_junction, fluid, params);
-  p_junction += (beta * params.dt / volume) * q_net;
-  comp.state.p_junction = p_junction;
+  const C = volume / beta;
+  const Zc = params.dt / (2.0 * C);
+  const coeff = params.dt / C;
 
-  const Zc = (beta * params.dt) / (2 * volume);
-
-  // Write wave variables to all ports
+  // Semi-implicit pressure update from incident waves on all ports.
+  // q_in_i = (c_i - p_new) / Zc_i for each port
+  // p_new = p_old + (dt / C) * sum(q_in_i)
+  // Solved implicitly for unconditional stability:
+  let sumCoverZ = 0;
+  let sumInvZ = 0;
   for (let i = 0; i < comp.portCount; i++) {
     const port = ports[comp.portStartIndex + i];
-    port.c = p_junction + Zc * port.q;
+    const Zc_i = Math.max(port.Zc, 1e-6);
+    sumCoverZ += port.c / Zc_i;
+    sumInvZ += 1.0 / Zc_i;
+  }
+
+  const p_new = (p_junction + coeff * sumCoverZ) / (1.0 + coeff * sumInvZ);
+  comp.state.p_junction = p_new;
+
+  // Write realized flows and wave variables to all ports
+  for (let i = 0; i < comp.portCount; i++) {
+    const port = ports[comp.portStartIndex + i];
+    const Zc_i = Math.max(port.Zc, 1e-6);
+    const q_in = (port.c - p_new) / Zc_i;
+    port.p = p_new;
+    port.q = -q_in; // outflow convention
+    port.c = p_new + Zc * port.q;
     port.Zc = Zc;
-    port.p = p_junction;
   }
 }
 
@@ -181,16 +209,27 @@ export function updateHydropneumaticSphere(
 
   const Zc = params.dt / (2.0 * C_total);
 
-  // Wave variable output
-  port.c = p_liquid + Zc * port.q;
-  port.Zc = Zc;
-  port.p = p_liquid;
+  // Semi-implicit pressure update using incident wave from the transmission line.
+  // q_in = (c_in - p_new) / Zc_line, where c_in and Zc_line come from Pass 1.
+  const c_in = port.c;
+  const Zc_line = Math.max(port.Zc, 1e-6);
+  const coeff = params.dt / (C_total * Zc_line);
+  const p_liquid_new = (p_liquid + coeff * c_in) / (1.0 + coeff);
 
-  // Update diaphragm position from flow
+  // Realized flow INTO the sphere
+  const q_in = (c_in - p_liquid_new) / Zc_line;
+
+  // Update diaphragm position from realized flow
   const A_eff_h = Math.max(A_eff(h), 1e-9);
-  h += params.dt * port.q / A_eff_h;
+  h += params.dt * q_in / A_eff_h;
   h = Math.max(h_min, Math.min(h_max, h));
   comp.state.h = h;
+
+  // Write port state for next step's wave propagation
+  port.p = p_liquid_new;
+  port.q = -q_in; // outflow convention: positive = leaving the line
+  port.c = p_liquid_new + Zc * port.q;
+  port.Zc = Zc;
 }
 
 // ============================================================
@@ -226,14 +265,26 @@ export function updatePistonAccumulator(
   const Zc = params.dt / (2.0 * C_total);
 
   const p_liquid = p_gas;
-  port.c = p_liquid + Zc * port.q;
-  port.Zc = Zc;
-  port.p = p_liquid;
 
-  // Position update
-  x += params.dt * port.q / A;
+  // Semi-implicit pressure update using incident wave from the transmission line
+  const c_in = port.c;
+  const Zc_line = Math.max(port.Zc, 1e-6);
+  const coeff = params.dt / (C_total * Zc_line);
+  const p_liquid_new = (p_liquid + coeff * c_in) / (1.0 + coeff);
+
+  // Realized flow INTO the accumulator
+  const q_in = (c_in - p_liquid_new) / Zc_line;
+
+  // Piston position update from realized flow
+  x += params.dt * q_in / A;
   x = Math.max(0, Math.min(stroke, x));
   comp.state.piston_position = x;
+
+  // Write port state for next step's wave propagation
+  port.p = p_liquid_new;
+  port.q = -q_in;
+  port.c = p_liquid_new + Zc * port.q;
+  port.Zc = Zc;
 }
 
 // ============================================================
@@ -302,16 +353,28 @@ export function updateBalloon(
   const Zc_damping = dampingRatio * Math.sqrt(Math.abs(K)) * params.dt;
   const Zc = Zc_elastic + Zc_damping;
 
-  port.c = p_internal + Zc * port.q;
-  port.Zc = Zc;
-  port.p = p_internal;
+  // Semi-implicit pressure update using incident wave from the transmission line
+  const c_in = port.c;
+  const Zc_line = Math.max(port.Zc, 1e-6);
+  const C_eff = 1.0 / Math.max(K, 1.0);
+  const coeff = params.dt / (C_eff * Zc_line);
+  const p_new = (p_internal + coeff * c_in) / (1.0 + coeff);
 
-  // Update volume
-  V += params.dt * port.q;
+  // Realized flow INTO the balloon
+  const q_in = (c_in - p_new) / Zc_line;
+
+  // Update volume from realized flow
+  V += params.dt * q_in;
   const V_min = V_nominal * 0.1;
   const V_burst = isSpherical
     ? (4 / 3) * Math.PI * Math.pow(R_nominal * (1 + maxStrain), 3)
     : Math.PI * Math.pow(R_nominal * (1 + maxStrain), 2) * length;
   V = Math.max(V_min, Math.min(V_burst, V));
   comp.state.V_current = V;
+
+  // Write port state for next step's wave propagation
+  port.p = p_new;
+  port.q = -q_in;
+  port.c = p_new + Zc * port.q;
+  port.Zc = Zc;
 }

@@ -1053,6 +1053,204 @@ describe('Oscillating Force', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Cylinder Position Clamping Tests
+// ---------------------------------------------------------------------------
+
+describe('Cylinder initial position clamping', () => {
+  it('clamps negative initial position to 0 for double-acting cylinder', () => {
+    const src = uid();
+    const tank = uid();
+    const cyl = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 100e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: tank, type: 'TANK', label: 'T',
+          position: { x: 200, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+        {
+          id: cyl, type: 'DOUBLE_ACTING_CYLINDER', label: 'CYL',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: 0.2,
+            mass: 10,
+            friction_viscous: 100,
+            position: -0.5, // out of range: negative
+          },
+          ports: [makePort('A'), makePort('B')],
+        },
+      ],
+      [
+        makeConnection(src, 'out', cyl, 'A'),
+        makeConnection(tank, 'out', cyl, 'B'),
+      ],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+
+    // Initial position must be clamped to 0
+    const state0 = solver.getComponentState(cyl);
+    expect(state0.position).toBe(0);
+
+    // After running, position must remain within [0, stroke]
+    runFor(solver, 1000);
+    const state1 = solver.getComponentState(cyl);
+    expect(state1.position).toBeGreaterThanOrEqual(0);
+    expect(state1.position).toBeLessThanOrEqual(0.2);
+  });
+
+  it('clamps initial position exceeding stroke to stroke_length for double-acting cylinder', () => {
+    const src = uid();
+    const tank = uid();
+    const cyl = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 100e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: tank, type: 'TANK', label: 'T',
+          position: { x: 200, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+        {
+          id: cyl, type: 'DOUBLE_ACTING_CYLINDER', label: 'CYL',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: 0.2,
+            mass: 10,
+            friction_viscous: 100,
+            position: 0.5, // out of range: exceeds stroke
+          },
+          ports: [makePort('A'), makePort('B')],
+        },
+      ],
+      [
+        makeConnection(src, 'out', cyl, 'A'),
+        makeConnection(tank, 'out', cyl, 'B'),
+      ],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+
+    // Initial position must be clamped to stroke_length
+    const state0 = solver.getComponentState(cyl);
+    expect(state0.position).toBe(0.2);
+
+    // After running, position must remain within [0, stroke]
+    runFor(solver, 1000);
+    const state1 = solver.getComponentState(cyl);
+    expect(state1.position).toBeGreaterThanOrEqual(0);
+    expect(state1.position).toBeLessThanOrEqual(0.2);
+  });
+
+  it('clamps negative initial position to 0 for single-acting cylinder', () => {
+    const tank = uid();
+    const cyl = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: tank, type: 'TANK', label: 'T',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+        {
+          id: cyl, type: 'SINGLE_ACTING_CYLINDER', label: 'CYL',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: 0.2,
+            mass: 5,
+            friction_viscous: 50,
+            spring_rate: 5000,
+            spring_preload: 200,
+            position: -1.0, // out of range: negative
+          },
+          ports: [makePort('A')],
+        },
+      ],
+      [makeConnection(tank, 'out', cyl, 'A')],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+
+    const state0 = solver.getComponentState(cyl);
+    expect(state0.position).toBe(0);
+
+    runFor(solver, 1000);
+    const state1 = solver.getComponentState(cyl);
+    expect(state1.position).toBeGreaterThanOrEqual(0);
+    expect(state1.position).toBeLessThanOrEqual(0.2);
+  });
+
+  it('clamps initial position exceeding stroke for single-acting cylinder', () => {
+    const tank = uid();
+    const cyl = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: tank, type: 'TANK', label: 'T',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+        {
+          id: cyl, type: 'SINGLE_ACTING_CYLINDER', label: 'CYL',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: 0.2,
+            mass: 5,
+            friction_viscous: 50,
+            spring_rate: 5000,
+            spring_preload: 200,
+            position: 10.0, // out of range: way beyond stroke
+          },
+          ports: [makePort('A')],
+        },
+      ],
+      [makeConnection(tank, 'out', cyl, 'A')],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+
+    const state0 = solver.getComponentState(cyl);
+    expect(state0.position).toBe(0.2);
+
+    runFor(solver, 1000);
+    const state1 = solver.getComponentState(cyl);
+    expect(state1.position).toBeGreaterThanOrEqual(0);
+    expect(state1.position).toBeLessThanOrEqual(0.2);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Solver Infrastructure Tests
 // ---------------------------------------------------------------------------
 

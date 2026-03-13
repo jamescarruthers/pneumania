@@ -93,10 +93,12 @@ export function updateDoubleActingCylinder(
   const endstopDamping = comp.params.endstop_damping ?? 1e4;      // N·s/m
   let F_contact = 0;
   let K_contact = 0;  // semi-implicit stiffness contribution
-  if (position <= 0) {
+  if (position < 0 || (position === 0 && velocity < 0)) {
+    // Penetrating left stop or arriving at it
     F_contact = endstopStiffness * (-position) + endstopDamping * Math.max(-velocity, 0);
     K_contact = endstopStiffness * params.dt + endstopDamping;
-  } else if (position >= stroke) {
+  } else if (position > stroke || (position === stroke && velocity > 0)) {
+    // Penetrating right stop or arriving at it
     F_contact = -endstopStiffness * (position - stroke) - endstopDamping * Math.max(velocity, 0);
     K_contact = endstopStiffness * params.dt + endstopDamping;
   }
@@ -203,10 +205,10 @@ export function updateSingleActingCylinder(
   const endstopDamping = comp.params.endstop_damping ?? 1e4;
   let F_contact = 0;
   let K_contact = 0;
-  if (position <= 0) {
+  if (position < 0 || (position === 0 && velocity < 0)) {
     F_contact = endstopStiffness * (-position) + endstopDamping * Math.max(-velocity, 0);
     K_contact = endstopStiffness * params.dt + endstopDamping;
-  } else if (position >= stroke) {
+  } else if (position > stroke || (position === stroke && velocity > 0)) {
     F_contact = -endstopStiffness * (position - stroke) - endstopDamping * Math.max(velocity, 0);
     K_contact = endstopStiffness * params.dt + endstopDamping;
   }
@@ -555,11 +557,11 @@ export function updateDcv43(
   // A→T path
   const q_AT = solveOrificeFlowNR(portA.c, portA.Zc, portT.c, portT.Zc, Cd, Math.max(area_AT, leakArea), fluid, p_avg, params);
 
-  // Net flows at each port
-  const q_P = -(q_PA + q_PB);  // out of P
-  const q_T = q_BT + q_AT;     // into T
-  const q_A = q_PA - q_AT;     // net at A
-  const q_B = q_PB - q_BT;     // net at B
+  // Net inflows at each port (positive = into component, used for TLM: p = c - Zc*q_in)
+  const q_P = -(q_PA + q_PB);  // inflow at P (negative during normal operation)
+  const q_T = q_BT + q_AT;     // inflow at T (positive during normal operation)
+  const q_A = q_PA - q_AT;     // net inflow at A
+  const q_B = q_PB - q_BT;     // net inflow at B
 
   portP.p = portP.c - portP.Zc * q_P;
   portP.q = -q_P; // outflow convention: positive = leaving component
@@ -609,9 +611,10 @@ export function updateDcv32(
   const q_PA = solveOrificeFlowNR(portP.c, portP.Zc, portA.c, portA.Zc, Cd, Math.max(area_PA, leakArea), fluid, p_avg, params);
   const q_AT = solveOrificeFlowNR(portA.c, portA.Zc, portT.c, portT.Zc, Cd, Math.max(area_AT, leakArea), fluid, p_avg, params);
 
-  const q_P = -q_PA;
-  const q_A = q_PA - q_AT;
-  const q_T = q_AT;
+  // Net inflows at each port (positive = into component, used for TLM: p = c - Zc*q_in)
+  const q_P = -q_PA;          // inflow at P
+  const q_A = q_PA - q_AT;    // net inflow at A
+  const q_T = q_AT;           // inflow at T
 
   portP.p = portP.c - portP.Zc * q_P;
   portP.q = -q_P; // outflow convention: positive = leaving component

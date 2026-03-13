@@ -705,7 +705,7 @@ describe('Orifice', () => {
 // ---------------------------------------------------------------------------
 
 describe('Conservation', () => {
-  it('flow into a cylinder equals piston velocity times area', () => {
+  it('port outflow equals negative piston velocity times area', () => {
     const src = uid();
     const tank = uid();
     const cyl = uid();
@@ -734,9 +734,9 @@ describe('Conservation', () => {
           params: {
             bore_diameter: bore,
             rod_diameter: rod,
-            stroke_length: 0.2,
-            mass: 10,
-            friction_viscous: 100,
+            stroke_length: 1.0,
+            mass: 50,
+            friction_viscous: 5000,
             position: 0,
           },
           ports: [makePort('A'), makePort('B')],
@@ -751,14 +751,20 @@ describe('Conservation', () => {
     const solver = new TLMSolverEngine();
     solver.init(circuit);
 
-    // Run enough for motion but not to hit hard stop
-    runFor(solver, 500);
+    // Run enough for motion to reach steady-state but not hit the hard stop.
+    // Steady-state velocity ≈ F/friction ≈ (100e5 * 1.96e-3)/5000 ≈ 3.9 m/s.
+    // After 200 steps (0.02s) the piston travels ~0.04m out of 1.0m stroke.
+    runFor(solver, 200);
 
     const state = solver.getComponentState(cyl);
     const portA = solver.getPortState(portIndex(solver, cyl, 0)); // cylinder port A
 
-    // q_A should equal velocity * A_cap
-    const expected_q = state.velocity * A_cap;
+    // Piston should be extending (velocity > 0) and not yet at end-stop
+    expect(state.velocity).toBeGreaterThan(0);
+    expect(state.position).toBeLessThan(1.0);
+
+    // Outflow convention: portA.q = -v * A_cap (negative because fluid enters the cylinder)
+    const expected_q = -state.velocity * A_cap;
     expect(portA.q).toBeCloseTo(expected_q, 6);
   });
 
@@ -2105,5 +2111,79 @@ describe('Two cylinders connected together', () => {
     expect(state1.position).toBeGreaterThan(0.01);
     // Cyl2 must ALSO have extended (driven by oil from cyl1's rod side)
     expect(state2.position).toBeGreaterThan(0.01);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// End-Stop Contact (bounce dissipation)
+// ---------------------------------------------------------------------------
+
+describe('End-stop contact model', () => {
+  /**
+   * Regression: a pressurised cylinder with a dead-ended (capped) B port used
+   * to bounce rapidly between end stops because the lossless TLM wave
+   * reflection would reflect pressure waves without dissipation.  The contact
+   * model should absorb impact energy and settle the piston at the stroke end.
+   */
+  it('cylinder settles at end-stop without repeated bouncing', () => {
+    const src = uid();
+    const tank = uid();
+    const cyl = uid();
+
+    const stroke = 0.1;
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 50e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: tank, type: 'TANK', label: 'T',
+          position: { x: 200, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+        {
+          id: cyl, type: 'DOUBLE_ACTING_CYLINDER', label: 'CYL',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: stroke,
+            mass: 5,
+            friction_viscous: 50,
+            position: 0,
+          },
+          ports: [makePort('A'), makePort('B')],
+        },
+      ],
+      [
+        makeConnection(src, 'out', cyl, 'A'),
+        makeConnection(tank, 'out', cyl, 'B'),
+      ],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+
+    // Run long enough for the piston to hit the far end-stop and settle
+    runFor(solver, 10000);
+
+    const state = solver.getComponentState(cyl);
+
+    // Piston should be at or very near the far end-stop
+    expect(state.position).toBeCloseTo(stroke, 2);
+
+    // Velocity should have settled to near-zero (no sustained bouncing)
+    expect(Math.abs(state.velocity)).toBeLessThan(0.1);
+
+    // Sample further to confirm no late-onset oscillation
+    runFor(solver, 5000);
+    const stateLater = solver.getComponentState(cyl);
+    expect(stateLater.position).toBeCloseTo(stroke, 2);
+    expect(Math.abs(stateLater.velocity)).toBeLessThan(0.01);
   });
 });

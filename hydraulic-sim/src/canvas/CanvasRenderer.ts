@@ -4,7 +4,7 @@
  */
 
 import type { ComponentDef, ConnectionDef, PortState, FluidDef } from '../solver/types';
-import { drawComponentSymbol, getPortWorldPositions, COMPONENT_SIZES, type SymbolContext } from '../components/symbols';
+import { drawComponentSymbol, getPortWorldPositions, getPortOutwardDir, COMPONENT_SIZES, type SymbolContext } from '../components/symbols';
 import { pressureToColour, getFluidLineStyle } from './PressureColourMap';
 import { drawFlowArrows } from './FlowAnimation';
 
@@ -187,6 +187,10 @@ function drawConnection(
   ctx.lineWidth = selected ? 3 : 2;
   ctx.setLineDash(dashPattern);
 
+  // Port outward directions for bezier control points
+  const fromDir = getPortOutwardDir(fromComp.type, conn.from.port, fromComp.rotation);
+  const toDir = getPortOutwardDir(toComp.type, conn.to.port, toComp.rotation);
+
   // Build full point list: from -> waypoints -> to
   const points = [
     { x: fromPort.x, y: fromPort.y },
@@ -194,57 +198,46 @@ function drawConnection(
     { x: toPort.x, y: toPort.y },
   ];
 
-  // Draw bezier curve through points
+  // Draw bezier curve through points with control points going
+  // outward from the component at each port
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
 
-  if (points.length === 2) {
-    // Direct connection: cubic bezier with control points extending
-    // along the axis of greatest separation for a smooth curve
-    const dx = points[1].x - points[0].x;
-    const dy = points[1].y - points[0].y;
+  for (let i = 1; i < points.length; i++) {
+    const p0 = points[i - 1];
+    const p1 = points[i];
+    const dx = p1.x - p0.x;
+    const dy = p1.y - p0.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     const tension = Math.min(dist * 0.4, 80);
 
-    // Extend control points horizontally or vertically based on dominant axis
-    if (Math.abs(dx) >= Math.abs(dy)) {
-      ctx.bezierCurveTo(
-        points[0].x + tension, points[0].y,
-        points[1].x - tension, points[1].y,
-        points[1].x, points[1].y
-      );
+    // First control point: use port outward direction for first segment start
+    let cp1x: number, cp1y: number;
+    if (i === 1) {
+      cp1x = p0.x + fromDir.dx * tension;
+      cp1y = p0.y + fromDir.dy * tension;
+    } else if (Math.abs(dx) >= Math.abs(dy)) {
+      cp1x = p0.x + tension;
+      cp1y = p0.y;
     } else {
-      ctx.bezierCurveTo(
-        points[0].x, points[0].y + Math.sign(dy) * tension,
-        points[1].x, points[1].y - Math.sign(dy) * tension,
-        points[1].x, points[1].y
-      );
+      cp1x = p0.x;
+      cp1y = p0.y + (Math.sign(dy) || 1) * tension;
     }
-  } else {
-    // Multiple segments: use cubic bezier for each segment with
-    // control points extending along the segment's dominant axis
-    for (let i = 1; i < points.length; i++) {
-      const p0 = points[i - 1];
-      const p1 = points[i];
-      const dx = p1.x - p0.x;
-      const dy = p1.y - p0.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const tension = Math.min(dist * 0.4, 80);
 
-      if (Math.abs(dx) >= Math.abs(dy)) {
-        ctx.bezierCurveTo(
-          p0.x + tension, p0.y,
-          p1.x - tension, p1.y,
-          p1.x, p1.y
-        );
-      } else {
-        ctx.bezierCurveTo(
-          p0.x, p0.y + Math.sign(dy) * tension,
-          p1.x, p1.y - Math.sign(dy) * tension,
-          p1.x, p1.y
-        );
-      }
+    // Second control point: use port outward direction for last segment end
+    let cp2x: number, cp2y: number;
+    if (i === points.length - 1) {
+      cp2x = p1.x + toDir.dx * tension;
+      cp2y = p1.y + toDir.dy * tension;
+    } else if (Math.abs(dx) >= Math.abs(dy)) {
+      cp2x = p1.x - tension;
+      cp2y = p1.y;
+    } else {
+      cp2x = p1.x;
+      cp2y = p1.y - (Math.sign(dy) || 1) * tension;
     }
+
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p1.x, p1.y);
   }
 
   ctx.stroke();
@@ -256,7 +249,7 @@ function drawConnection(
     const portIdx = state.portIndexMap.get(portKey);
     if (portIdx !== undefined && state.portStates[portIdx]) {
       const flow = state.portStates[portIdx].q;
-      drawFlowArrows(ctx, points, flow, state.time, lineColour);
+      drawFlowArrows(ctx, points, flow, state.time, lineColour, fromDir, toDir);
     }
   }
 
@@ -284,6 +277,96 @@ export function hitTestComponent(
       wy <= comp.position.y + hh
     ) {
       return comp;
+    }
+  }
+  return null;
+}
+
+/**
+ * Hit test: find port at screen coordinates.
+ */
+/**
+ * Hit test: find connection (pipe) at world coordinates.
+ * Samples the bezier curve and checks distance to the click point.
+ */
+export function hitTestConnection(
+  wx: number, wy: number,
+  connections: ConnectionDef[],
+  components: ComponentDef[],
+  threshold: number = 8
+): ConnectionDef | null {
+  for (const conn of connections) {
+    const fromComp = components.find((c) => c.id === conn.from.component);
+    const toComp = components.find((c) => c.id === conn.to.component);
+    if (!fromComp || !toComp) continue;
+
+    const fromPorts = getPortWorldPositions(
+      fromComp.type, fromComp.position.x, fromComp.position.y,
+      fromComp.ports, fromComp.rotation
+    );
+    const toPorts = getPortWorldPositions(
+      toComp.type, toComp.position.x, toComp.position.y,
+      toComp.ports, toComp.rotation
+    );
+
+    const fromPort = fromPorts.find((p) => p.id === conn.from.port);
+    const toPort = toPorts.find((p) => p.id === conn.to.port);
+    if (!fromPort || !toPort) continue;
+
+    const fromDir = getPortOutwardDir(fromComp.type, conn.from.port, fromComp.rotation);
+    const toDir = getPortOutwardDir(toComp.type, conn.to.port, toComp.rotation);
+
+    const points = [
+      { x: fromPort.x, y: fromPort.y },
+      ...conn.waypoints,
+      { x: toPort.x, y: toPort.y },
+    ];
+
+    // Sample bezier and check distance
+    const stepsPerSeg = 30;
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[i];
+      const p1 = points[i + 1];
+      const dx = p1.x - p0.x;
+      const dy = p1.y - p0.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const tension = Math.min(dist * 0.4, 80);
+
+      let cp1x: number, cp1y: number;
+      if (i === 0) {
+        cp1x = p0.x + fromDir.dx * tension;
+        cp1y = p0.y + fromDir.dy * tension;
+      } else if (Math.abs(dx) >= Math.abs(dy)) {
+        cp1x = p0.x + tension;
+        cp1y = p0.y;
+      } else {
+        cp1x = p0.x;
+        cp1y = p0.y + (Math.sign(dy) || 1) * tension;
+      }
+
+      let cp2x: number, cp2y: number;
+      if (i === points.length - 2) {
+        cp2x = p1.x + toDir.dx * tension;
+        cp2y = p1.y + toDir.dy * tension;
+      } else if (Math.abs(dx) >= Math.abs(dy)) {
+        cp2x = p1.x - tension;
+        cp2y = p1.y;
+      } else {
+        cp2x = p1.x;
+        cp2y = p1.y - (Math.sign(dy) || 1) * tension;
+      }
+
+      for (let s = 0; s <= stepsPerSeg; s++) {
+        const t = s / stepsPerSeg;
+        const u = 1 - t;
+        const sx = u*u*u*p0.x + 3*u*u*t*cp1x + 3*u*t*t*cp2x + t*t*t*p1.x;
+        const sy = u*u*u*p0.y + 3*u*u*t*cp1y + 3*u*t*t*cp2y + t*t*t*p1.y;
+        const ddx = wx - sx;
+        const ddy = wy - sy;
+        if (ddx * ddx + ddy * ddy < threshold * threshold) {
+          return conn;
+        }
+      }
     }
   }
   return null;

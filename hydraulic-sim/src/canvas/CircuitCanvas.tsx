@@ -7,7 +7,7 @@ import { useRef, useEffect, useCallback, useMemo } from 'react';
 import { useCircuitStore } from '../store/circuitStore';
 import { useSimulationStore } from '../store/simulationStore';
 import { useUIStore } from '../store/uiStore';
-import { renderCircuit, hitTestComponent, hitTestPort, type RenderState } from './CanvasRenderer';
+import { renderCircuit, hitTestComponent, hitTestPort, hitTestConnection, type RenderState } from './CanvasRenderer';
 import { snapToGrid } from '../utils/math';
 
 export function CircuitCanvas() {
@@ -263,6 +263,13 @@ export function CircuitCanvas() {
           dragComponentRef.current = compHit.id;
           dragStartRef.current = world;
         }
+        return;
+      }
+
+      // Check for connection (pipe) hit
+      const connHit = hitTestConnection(world.x, world.y, circuit.connections, circuit.components);
+      if (connHit) {
+        ui.selectConnection(connHit.id);
         return;
       }
 

@@ -20,8 +20,8 @@ import {
   waveSpeed,
 } from '../fluid/properties';
 import { updatePressureSource, updateTank, updateTlmLine, updateTeeJunction, updateHydropneumaticSphere, updatePistonAccumulator, updateBalloon } from '../components/models/cTypes';
-import { updateDoubleActingCylinder, updateSingleActingCylinder, updateOrifice, updateCheckValve, updateOneWayFlowControl, updateVariableOrifice, updateDcv43, updateDcv32, updateSpring, updateMassLoad } from '../components/models/qTypes';
-import { updatePushButton, updateToggleSwitch, updateSliderControl, updateOscillatingForce } from '../components/models/sTypes';
+import { updateDoubleActingCylinder, updateSingleActingCylinder, updateOrifice, updateCheckValve, updateOneWayFlowControl, updateVariableOrifice, updateDcv43, updateDcv32, updateSpring, updateMassLoad, updateOscillatingForce } from '../components/models/qTypes';
+import { updatePushButton, updateToggleSwitch, updateSliderControl } from '../components/models/sTypes';
 
 export interface CompiledConnection {
   port_a: number;
@@ -201,6 +201,9 @@ export class TLMSolverEngine implements Solver {
       case 'MASS_LOAD':
         updateMassLoad(comp, c.ports, c.params);
         break;
+      case 'OSCILLATING_FORCE':
+        updateOscillatingForce(comp, c.ports, c.params);
+        break;
     }
   }
 
@@ -215,9 +218,6 @@ export class TLMSolverEngine implements Solver {
         break;
       case 'SLIDER_CONTROL':
         updateSliderControl(comp, c.params);
-        break;
-      case 'OSCILLATING_FORCE':
-        updateOscillatingForce(comp, c.params);
         break;
     }
   }
@@ -372,7 +372,6 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     PUSH_BUTTON: 'spool_position',
     TOGGLE_SWITCH: 'spool_position',
     SLIDER_CONTROL: 'value',
-    OSCILLATING_FORCE: 'force_value',
   };
 
   // Compile connections — separate signal routes from TLM connections

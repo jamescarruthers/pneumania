@@ -110,7 +110,7 @@ export const COMPONENT_TLM_CLASS: Record<ComponentType, TLMClass> = {
   PUSH_BUTTON: 'S',
   TOGGLE_SWITCH: 'S',
   SLIDER_CONTROL: 'S',
-  OSCILLATING_FORCE: 'S',
+  OSCILLATING_FORCE: 'Q',
   TLM_LINE: 'C',
 };
 

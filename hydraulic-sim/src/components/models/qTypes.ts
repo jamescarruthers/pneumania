@@ -572,6 +572,63 @@ export function updateSpring(
 }
 
 // ============================================================
+// Oscillating Force (Q-type, mechanical domain)
+// Generates a time-varying mechanical force (e.g. road surface input).
+// Waveforms: 0 = sine, 1 = square, 2 = triangle, 3 = random
+// ============================================================
+
+export function updateOscillatingForce(
+  comp: ComponentInstance,
+  ports: PortState[],
+  params: SimParams
+): void {
+  const port = ports[comp.portStartIndex];
+
+  const amplitude = comp.params.amplitude ?? 1000;    // N
+  const frequency = comp.params.frequency ?? 5;        // Hz
+  const waveform = comp.params.waveform ?? 0;          // 0=sine, 1=square, 2=triangle, 3=random
+  const offset = comp.params.offset ?? 0;              // N (DC offset)
+
+  const phase = (params.time * frequency) % 1.0; // 0–1 normalised phase
+
+  let signal: number;
+  switch (waveform) {
+    case 1: // square
+      signal = phase < 0.5 ? 1.0 : -1.0;
+      break;
+    case 2: // triangle
+      signal = phase < 0.5
+        ? 4.0 * phase - 1.0
+        : 3.0 - 4.0 * phase;
+      break;
+    case 3: { // random (sample-and-hold at each cycle)
+      const cycle = Math.floor(params.time * frequency);
+      const prevCycle = comp.state.random_cycle ?? -1;
+      if (cycle !== prevCycle) {
+        const seed = Math.imul(cycle, 2654435761); // Knuth multiplicative hash
+        comp.state.random_value = ((seed & 0x7fffffff) / 0x7fffffff) * 2 - 1; // -1 to 1
+        comp.state.random_cycle = cycle;
+      }
+      signal = comp.state.random_value ?? 0;
+      break;
+    }
+    default: // sine
+      signal = Math.sin(2 * Math.PI * phase);
+      break;
+  }
+
+  const forceValue = offset + amplitude * signal;
+  comp.state.force_value = forceValue;
+
+  // Apply as a mechanical force source: impose force on the port.
+  // In the mechanical TLM domain, p = force, q = velocity.
+  // As a force source, we set the port force and accept whatever velocity
+  // the connected component dictates.
+  port.p = forceValue;
+  port.q = 0;
+}
+
+// ============================================================
 // External Load / Mass (Q-type, mechanical domain)
 // ============================================================
 

@@ -91,9 +91,13 @@ export function getDefaultPorts(type: ComponentType): PortDef[] {
     case 'PUSH_BUTTON':
     case 'TOGGLE_SWITCH':
     case 'SLIDER_CONTROL':
-    case 'OSCILLATING_FORCE':
       return [
         { id: 'signal_out', type: 'signal', side: 'right', offset: 0.5 },
+      ];
+
+    case 'OSCILLATING_FORCE':
+      return [
+        { id: 'mech', type: 'mechanical', side: 'right', offset: 0.5 },
       ];
 
     case 'TLM_LINE':

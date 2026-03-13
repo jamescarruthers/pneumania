@@ -822,14 +822,14 @@ export function drawOscillatingForceSymbol(sc: SymbolContext): void {
   ctx.fillStyle = forceValue >= 0 ? '#00b894' : '#d63031';
   ctx.fillRect(16, barDir > 0 ? 0 : -barHeight, 4, barHeight);
 
-  // Port (signal output)
-  drawPort(ctx, 28, 0, false, 'signal');
+  // Port (mechanical output)
+  drawPort(ctx, 28, 0, false, 'mechanical');
 
   // Label
-  ctx.fillStyle = PORT_COLOUR_SIGNAL;
+  ctx.fillStyle = PORT_COLOUR_MECHANICAL;
   ctx.font = '7px monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('sig', 24, 14);
+  ctx.fillText('F', 24, 14);
 
   ctx.restore();
 }

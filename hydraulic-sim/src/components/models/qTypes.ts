@@ -10,7 +10,7 @@ import {
   type ComponentInstance,
   P_ATM,
 } from '../../solver/types';
-import { orificeFlow, effectiveDensity } from '../../fluid/properties';
+import { orificeFlow, effectiveDensity, effectiveBulkModulus } from '../../fluid/properties';
 
 // ============================================================
 // Double-Acting Cylinder (Q-type)
@@ -51,10 +51,10 @@ export function updateDoubleActingCylinder(
     // Capped port A: trapped fluid volume acts as a hydraulic spring.
     // V_A increases with extension (positive x), so extending drops pressure.
     const deadVol = comp.params.dead_volume_A ?? 1e-6;
-    const V_A = A_cap * position + deadVol;
+    const V_A = Math.max(A_cap * position + deadVol, 1e-10);
     const fluid = fluids[portA.fluid_id] || fluids[0];
     const p_trapped = comp.state.p_cap_a ?? params.p_atm;
-    const beta = fluid.beta_base;
+    const beta = effectiveBulkModulus(p_trapped, fluid, params);
     // Semi-implicit stiffness: Zc_cap = beta * dt / V
     Zc_A = beta * params.dt / V_A;
     c_A = p_trapped;
@@ -67,10 +67,10 @@ export function updateDoubleActingCylinder(
     // Capped port B: trapped fluid on the rod side.
     // V_B decreases with extension (positive x), so extending raises pressure.
     const deadVol = comp.params.dead_volume_B ?? 1e-6;
-    const V_B = A_rod * (stroke - position) + deadVol;
+    const V_B = Math.max(A_rod * (stroke - position) + deadVol, 1e-10);
     const fluid = fluids[portB.fluid_id] || fluids[0];
     const p_trapped = comp.state.p_cap_b ?? params.p_atm;
-    const beta = fluid.beta_base;
+    const beta = effectiveBulkModulus(p_trapped, fluid, params);
     Zc_B = beta * params.dt / V_B;
     c_B = p_trapped;
   } else {

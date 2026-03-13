@@ -1604,3 +1604,326 @@ describe('Unconnected mechanical port initialisation', () => {
     expect(posA).toBeCloseTo(posB, 6);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Cylinder with mechanically connected MASS_LOAD
+// ---------------------------------------------------------------------------
+
+describe('Cylinder mechanically connected to MASS_LOAD', () => {
+  it('extends under pressure with an external mass load', () => {
+    const src = uid();
+    const tank = uid();
+    const cyl = uid();
+    const mass = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 100e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: tank, type: 'TANK', label: 'T',
+          position: { x: 200, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+        {
+          id: cyl, type: 'DOUBLE_ACTING_CYLINDER', label: 'CYL',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: 0.2,
+            mass: 5,
+            friction_viscous: 100,
+            position: 0,
+          },
+          ports: [
+            makePort('A', 'hydraulic', 'left'),
+            makePort('B', 'hydraulic', 'right'),
+            makePort('ctrl', 'signal', 'top'),
+            { id: 'mech', type: 'mechanical', side: 'bottom', offset: 0.5 },
+          ],
+        },
+        {
+          id: mass, type: 'MASS_LOAD', label: 'MASS',
+          position: { x: 100, y: -50 }, rotation: 0,
+          params: { mass: 50, gravity_force: 0, external_force: 0 },
+          ports: [{ id: 'mech', type: 'mechanical', side: 'right', offset: 0.5 }],
+        },
+      ],
+      [
+        makeConnection(src, 'out', cyl, 'A'),
+        makeConnection(tank, 'out', cyl, 'B'),
+        {
+          id: uid(),
+          from: { component: cyl, port: 'mech' },
+          to: { component: mass, port: 'mech' },
+          waypoints: [],
+          line_params: { inner_diameter: 0, length: 0, fluid_id: 0 },
+        },
+      ],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+    runFor(solver, 5000);
+
+    const cylState = solver.getComponentState(cyl);
+    // The piston should extend under 100 bar cap-side pressure
+    expect(cylState.position).toBeGreaterThan(0.01);
+    // Mass load velocity should be tracked
+    const massState = solver.getComponentState(mass);
+    expect(massState.velocity).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cylinder with mechanically connected SPRING
+// ---------------------------------------------------------------------------
+
+describe('Cylinder mechanically connected to SPRING', () => {
+  it('runs without NaN/Infinity when spring is connected to cylinder', () => {
+    const src = uid();
+    const tank = uid();
+    const cyl = uid();
+    const spring = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 5e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: tank, type: 'TANK', label: 'T',
+          position: { x: 200, y: 0 }, rotation: 0,
+          params: {},
+          ports: [makePort('out')],
+        },
+        {
+          id: cyl, type: 'DOUBLE_ACTING_CYLINDER', label: 'CYL',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: 0.2,
+            mass: 5,
+            friction_viscous: 200,
+            position: 0,
+          },
+          ports: [
+            makePort('A', 'hydraulic', 'left'),
+            makePort('B', 'hydraulic', 'right'),
+            makePort('ctrl', 'signal', 'top'),
+            { id: 'mech', type: 'mechanical', side: 'bottom', offset: 0.5 },
+          ],
+        },
+        {
+          id: spring, type: 'SPRING', label: 'SPR',
+          position: { x: 100, y: -50 }, rotation: 0,
+          params: { spring_rate: 500000, preload: 0, damping: 100 },
+          ports: [
+            { id: 'mech_a', type: 'mechanical', side: 'left', offset: 0.5 },
+            { id: 'mech_b', type: 'mechanical', side: 'right', offset: 0.5 },
+          ],
+        },
+      ],
+      [
+        makeConnection(src, 'out', cyl, 'A'),
+        makeConnection(tank, 'out', cyl, 'B'),
+        {
+          id: uid(),
+          from: { component: cyl, port: 'mech' },
+          to: { component: spring, port: 'mech_a' },
+          waypoints: [],
+          line_params: { inner_diameter: 0, length: 0, fluid_id: 0 },
+        },
+      ],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+    runFor(solver, 5000);
+
+    const cylState = solver.getComponentState(cyl);
+    // Simulation should produce finite values (no NaN/Infinity)
+    expect(Number.isFinite(cylState.position)).toBe(true);
+    expect(Number.isFinite(cylState.velocity)).toBe(true);
+    // Piston should extend under pressure
+    expect(cylState.position).toBeGreaterThan(0);
+    // Spring state should be finite
+    const springState = solver.getComponentState(spring);
+    expect(Number.isFinite(springState.displacement)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Capped-port pressure evolution
+// ---------------------------------------------------------------------------
+
+describe('Capped cylinder ports', () => {
+  it('builds up pressure in a capped volume when piston moves', () => {
+    const src = uid();
+    const cyl = uid();
+
+    // Port A connected to a pressure source, port B capped.
+    // Pressurising A should extend the piston, compressing the trapped
+    // fluid on the B side and raising p_cap_b above atmospheric.
+    const circuit = makeCircuit(
+      [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 100e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: cyl, type: 'DOUBLE_ACTING_CYLINDER', label: 'CYL',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: 0.2,
+            mass: 10,
+            friction_viscous: 200,
+            cap_b: 1,              // cap port B (trapped fluid)
+            dead_volume_B: 1e-5,   // 10 cm³ dead volume
+            position: 0,
+          },
+          ports: [
+            makePort('A', 'hydraulic', 'left'),
+            makePort('B', 'hydraulic', 'right'),
+            makePort('ctrl', 'signal', 'top'),
+            { id: 'mech', type: 'mechanical', side: 'bottom', offset: 0.5 },
+          ],
+        },
+      ],
+      [
+        makeConnection(src, 'out', cyl, 'A'),
+      ],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+
+    const initialState = solver.getComponentState(cyl);
+    expect(initialState.p_cap_b).toBeCloseTo(101325, -2); // starts at ~atmospheric
+
+    runFor(solver, 5000);
+
+    const finalState = solver.getComponentState(cyl);
+    // Piston should have extended, compressing the trapped B-side fluid
+    expect(finalState.position).toBeGreaterThan(0);
+    // Trapped pressure must have risen above atmospheric
+    expect(finalState.p_cap_b).toBeGreaterThan(101325);
+  });
+
+  it('does not produce NaN with zero dead volume', () => {
+    const src = uid();
+    const cyl = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 50e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: cyl, type: 'DOUBLE_ACTING_CYLINDER', label: 'CYL',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: 0.2,
+            mass: 10,
+            friction_viscous: 200,
+            cap_a: 1,
+            cap_b: 1,
+            dead_volume_A: 0,  // edge case: zero dead volume
+            dead_volume_B: 0,
+            position: 0.1,    // mid-stroke so both V_A and V_B are nonzero from piston area
+          },
+          ports: [
+            makePort('A', 'hydraulic', 'left'),
+            makePort('B', 'hydraulic', 'right'),
+            makePort('ctrl', 'signal', 'top'),
+            { id: 'mech', type: 'mechanical', side: 'bottom', offset: 0.5 },
+          ],
+        },
+      ],
+      [],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+    runFor(solver, 2000);
+
+    const state = solver.getComponentState(cyl);
+    // No NaN/Infinity in state values
+    expect(Number.isFinite(state.position)).toBe(true);
+    expect(Number.isFinite(state.velocity)).toBe(true);
+    expect(Number.isFinite(state.p_cap_a)).toBe(true);
+    expect(Number.isFinite(state.p_cap_b)).toBe(true);
+  });
+
+  it('resets trapped pressures on solver reset', () => {
+    const src = uid();
+    const cyl = uid();
+
+    const circuit = makeCircuit(
+      [
+        {
+          id: src, type: 'PRESSURE_SOURCE', label: 'P',
+          position: { x: 0, y: 0 }, rotation: 0,
+          params: { pressure: 100e5 },
+          ports: [makePort('out')],
+        },
+        {
+          id: cyl, type: 'DOUBLE_ACTING_CYLINDER', label: 'CYL',
+          position: { x: 100, y: 0 }, rotation: 0,
+          params: {
+            bore_diameter: 0.05,
+            rod_diameter: 0.025,
+            stroke_length: 0.2,
+            mass: 10,
+            friction_viscous: 200,
+            cap_b: 1,
+            dead_volume_B: 1e-5,
+            position: 0,
+          },
+          ports: [
+            makePort('A', 'hydraulic', 'left'),
+            makePort('B', 'hydraulic', 'right'),
+            makePort('ctrl', 'signal', 'top'),
+            { id: 'mech', type: 'mechanical', side: 'bottom', offset: 0.5 },
+          ],
+        },
+      ],
+      [
+        makeConnection(src, 'out', cyl, 'A'),
+      ],
+    );
+
+    const solver = new TLMSolverEngine();
+    solver.init(circuit);
+    runFor(solver, 3000);
+
+    // Pressure should have risen
+    const preReset = solver.getComponentState(cyl);
+    expect(preReset.p_cap_b).toBeGreaterThan(101325);
+
+    // After reset, trapped pressure should return to atmospheric
+    solver.reset();
+    const postReset = solver.getComponentState(cyl);
+    expect(postReset.p_cap_b).toBeCloseTo(101325, -2);
+    expect(postReset.position).toBe(0);
+  });
+});

@@ -297,6 +297,10 @@ export class TLMSolverEngine implements Solver {
         comp.state.position = 0;
         comp.state.velocity = 0;
       }
+      if (comp.type === 'DOUBLE_ACTING_CYLINDER') {
+        comp.state.p_cap_a = DEFAULT_SIM_PARAMS.p_atm;
+        comp.state.p_cap_b = DEFAULT_SIM_PARAMS.p_atm;
+      }
     }
     this.circuit.params.time = 0;
     this.circuit.params.step = 0;
@@ -440,7 +444,18 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
     // Mechanical connections pass force/velocity directly — no hydraulic line.
     // The hydraulic coupling is already handled inside the cylinder model via
     // Zc_A and Zc_B from the actual hydraulic port connections.
-    const isMechanicalConn = mechanicalPortIndices.has(portA) && mechanicalPortIndices.has(portB);
+    const portAisMech = mechanicalPortIndices.has(portA);
+    const portBisMech = mechanicalPortIndices.has(portB);
+
+    if (portAisMech !== portBisMech) {
+      // Cross-domain mismatch: one port is mechanical, the other hydraulic
+      warnedMismatches.push(
+        `  ${connDef.from.component}:${connDef.from.port} (${portAisMech ? 'mechanical' : 'hydraulic'}) → ${connDef.to.component}:${connDef.to.port} (${portBisMech ? 'mechanical' : 'hydraulic'})`
+      );
+      continue;
+    }
+
+    const isMechanicalConn = portAisMech && portBisMech;
 
     if (isMechanicalConn) {
       connections.push({
@@ -476,8 +491,28 @@ function compileCircuitDef(def: CircuitDefinition): CompiledCircuit {
 
   if (warnedMismatches.length > 0) {
     console.warn(
-      `Signal routing: skipping ${warnedMismatches.length} mismatched connection(s):\n${warnedMismatches.join('\n')}`
+      `Connection routing: skipping ${warnedMismatches.length} mismatched connection(s):\n${warnedMismatches.join('\n')}`
     );
+  }
+
+  // Warn if a capped cylinder port is still connected to an external line
+  const connectedPortIndices = new Set<number>();
+  for (const conn of connections) {
+    connectedPortIndices.add(conn.port_a);
+    connectedPortIndices.add(conn.port_b);
+  }
+  for (const comp of components) {
+    if (comp.type !== 'DOUBLE_ACTING_CYLINDER') continue;
+    if (comp.params.cap_a && connectedPortIndices.has(comp.portStartIndex)) {
+      console.warn(
+        `Cylinder '${comp.id}': port A is capped but still connected to a hydraulic line. The external line volume is not included in the trapped-volume model.`
+      );
+    }
+    if (comp.params.cap_b && connectedPortIndices.has(comp.portStartIndex + 1)) {
+      console.warn(
+        `Cylinder '${comp.id}': port B is capped but still connected to a hydraulic line. The external line volume is not included in the trapped-volume model.`
+      );
+    }
   }
 
   // Compute dt from minimum line delay (mechanical connections have no propagation delay)
@@ -532,8 +567,8 @@ function initComponentState(def: { type: string; params: Record<string, number |
       state.position = Math.max(0, Math.min(pos, stroke));
       state.velocity = 0;
       // Initialise trapped pressure for capped ports (atmospheric)
-      state.p_cap_a = 101325;
-      state.p_cap_b = 101325;
+      state.p_cap_a = DEFAULT_SIM_PARAMS.p_atm;
+      state.p_cap_b = DEFAULT_SIM_PARAMS.p_atm;
       break;
     }
     case 'SINGLE_ACTING_CYLINDER': {

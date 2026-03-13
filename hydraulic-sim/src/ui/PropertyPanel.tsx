@@ -1,7 +1,68 @@
+import { useState, useEffect, useCallback } from 'react';
 import { useCircuitStore } from '../store/circuitStore';
 import { useSimulationStore } from '../store/simulationStore';
 import { useUIStore } from '../store/uiStore';
 import { formatPressure } from '../utils/units';
+import type { PortType } from '../solver/types';
+
+const MIN_LENGTH = 0.05; // Must match solver clamp in engine.ts
+
+function NumericInput({
+  value,
+  onChange,
+  disabled,
+  step,
+  min,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  disabled?: boolean;
+  step: string;
+  min: string;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setDraft(String(value));
+  }, [value, focused]);
+
+  const commit = useCallback(() => {
+    const num = parseFloat(draft);
+    const minVal = parseFloat(min);
+    if (!isNaN(num) && num >= minVal) {
+      onChange(num);
+    } else {
+      setDraft(String(value));
+    }
+  }, [draft, min, onChange, value]);
+
+  return (
+    <input
+      style={styles.input}
+      type="number"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => { setFocused(false); commit(); }}
+      onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
+      disabled={disabled}
+      step={step}
+      min={min}
+    />
+  );
+}
+
+function getConnectionPortTypes(
+  circuit: ReturnType<typeof useCircuitStore.getState>['circuit'],
+  conn: { from: { component: string; port: string }; to: { component: string; port: string } },
+): { fromType: PortType | undefined; toType: PortType | undefined } {
+  const fromComp = circuit.components.find((c) => c.id === conn.from.component);
+  const toComp = circuit.components.find((c) => c.id === conn.to.component);
+  const fromPort = fromComp?.ports.find((p) => p.id === conn.from.port);
+  const toPort = toComp?.ports.find((p) => p.id === conn.to.port);
+  return { fromType: fromPort?.type, toType: toPort?.type };
+}
 
 export function PropertyPanel() {
   const circuit = useCircuitStore((s) => s.circuit);
@@ -28,49 +89,51 @@ export function PropertyPanel() {
     const fromComp = circuit.components.find((c) => c.id === conn.from.component);
     const toComp = circuit.components.find((c) => c.id === conn.to.component);
     const connLabel = `${fromComp?.label || '?'} → ${toComp?.label || '?'}`;
+    const { fromType, toType } = getConnectionPortTypes(circuit, conn);
+    const isHydraulic = fromType === 'hydraulic' && toType === 'hydraulic';
 
     return (
       <div style={styles.panel}>
-        <div style={styles.header}>Pipe Properties</div>
+        <div style={styles.header}>{isHydraulic ? 'Pipe Properties' : 'Connection Properties'}</div>
         <div style={styles.section}>
           <div style={styles.sectionTitle}>Connection</div>
           <div style={{ ...styles.fieldLabel, padding: '2px 0 6px' }}>{connLabel}</div>
         </div>
-        <div style={styles.section}>
-          <div style={styles.sectionTitle}>Parameters</div>
-          <div style={styles.field}>
-            <label style={styles.fieldLabel}>diameter</label>
-            <input
-              style={styles.input}
-              type="number"
-              value={conn.line_params.inner_diameter}
-              onChange={(e) => {
-                const num = parseFloat(e.target.value);
-                if (!isNaN(num) && num > 0) updateConnectionDiameter(conn.id, num);
-              }}
-              disabled={running}
-              step="0.001"
-              min="0.001"
-            />
-            <span style={styles.unit}>m</span>
+        {isHydraulic ? (
+          <div style={styles.section}>
+            <div style={styles.sectionTitle}>Parameters</div>
+            <div style={styles.field}>
+              <label style={styles.fieldLabel}>diameter</label>
+              <NumericInput
+                value={conn.line_params.inner_diameter}
+                onChange={(v) => updateConnectionDiameter(conn.id, v)}
+                disabled={running}
+                step="0.001"
+                min="0.001"
+              />
+              <span style={styles.unit}>m</span>
+            </div>
+            <div style={styles.field}>
+              <label style={styles.fieldLabel}>length</label>
+              <NumericInput
+                value={conn.line_params.length}
+                onChange={(v) => updateConnectionLength(conn.id, v)}
+                disabled={running}
+                step="0.1"
+                min={String(MIN_LENGTH)}
+              />
+              <span style={styles.unit}>m</span>
+            </div>
           </div>
-          <div style={styles.field}>
-            <label style={styles.fieldLabel}>length</label>
-            <input
-              style={styles.input}
-              type="number"
-              value={conn.line_params.length}
-              onChange={(e) => {
-                const num = parseFloat(e.target.value);
-                if (!isNaN(num) && num > 0) updateConnectionLength(conn.id, num);
-              }}
-              disabled={running}
-              step="0.1"
-              min="0.01"
-            />
-            <span style={styles.unit}>m</span>
+        ) : (
+          <div style={styles.section}>
+            <div style={{ ...styles.fieldLabel, padding: '4px 0', color: '#636e72', fontSize: 11 }}>
+              {fromType === toType
+                ? `${fromType} connection — pipe parameters do not apply`
+                : `Cross-domain connection (${fromType} → ${toType}) — pipe parameters do not apply`}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }

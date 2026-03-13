@@ -195,12 +195,13 @@ export const useCircuitStore = create<CircuitState>((set, get) => ({
   },
 
   updateConnectionLength: (id, length) => {
+    const clamped = Math.max(length, 0.05); // Match solver minimum (engine.ts)
     set((state) => ({
       circuit: {
         ...state.circuit,
         connections: state.circuit.connections.map((c) =>
           c.id === id
-            ? { ...c, line_params: { ...c.line_params, length } }
+            ? { ...c, line_params: { ...c.line_params, length: clamped } }
             : c
         ),
       },

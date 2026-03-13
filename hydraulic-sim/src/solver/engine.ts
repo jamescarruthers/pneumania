@@ -499,7 +499,7 @@ function initComponentState(def: { type: string; params: Record<string, number |
     case 'DOUBLE_ACTING_CYLINDER':
     case 'SINGLE_ACTING_CYLINDER': {
       const stroke = typeof p.stroke_length === 'number' ? p.stroke_length : 0.2;
-      const pos = typeof p.position === 'number' ? p.position : stroke * 0.5;
+      const pos = typeof p.position === 'number' ? p.position : 0;
       state.position = Math.max(0, Math.min(pos, stroke));
       state.velocity = 0;
       break;

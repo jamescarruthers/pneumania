@@ -2,6 +2,7 @@ import { useSimulationStore, type SimSpeed } from '../store/simulationStore';
 import { useCircuitStore } from '../store/circuitStore';
 import { EXAMPLE_CIRCUITS } from '../store/exampleCircuits';
 import { downloadCircuit, uploadCircuit, saveToLocalStorage } from '../store/persistence';
+import type { SolverBackend } from '../solver/interface';
 
 const SPEED_OPTIONS: SimSpeed[] = [0.1, 0.25, 0.5, 1, 2, 5, 10];
 
@@ -10,6 +11,9 @@ export function Toolbar() {
   const speed = useSimulationStore((s) => s.speed);
   const solver = useSimulationStore((s) => s.solver);
   const simParams = useSimulationStore((s) => s.simParams);
+  const solverBackend = useSimulationStore((s) => s.solverBackend);
+  const switchingBackend = useSimulationStore((s) => s.switchingBackend);
+  const setSolverBackend = useSimulationStore((s) => s.setSolverBackend);
   const togglePlayPause = useSimulationStore((s) => s.togglePlayPause);
   const stepOnce = useSimulationStore((s) => s.stepOnce);
   const reset = useSimulationStore((s) => s.reset);
@@ -110,6 +114,22 @@ export function Toolbar() {
             <option key={s} value={s}>{s}x</option>
           ))}
         </select>
+      </div>
+
+      <div style={styles.divider} />
+
+      <div style={styles.group}>
+        <label style={styles.label}>Engine:</label>
+        <select
+          style={styles.select}
+          value={solverBackend}
+          onChange={(e) => setSolverBackend(e.target.value as SolverBackend)}
+          disabled={running || switchingBackend}
+        >
+          <option value="js">TLM (JS)</option>
+          <option value="rapier">Rapier (hybrid)</option>
+        </select>
+        {switchingBackend && <span style={styles.info}>loading...</span>}
       </div>
 
       <div style={styles.divider} />

@@ -199,6 +199,17 @@ export interface Solver {
   getSimParams(): SimParams;
   reset(): void;
   dispose(): void;
+  setMouseForce(componentId: string, force: number): void;
+  clearMouseForce(componentId: string): void;
+  setComponentState(componentId: string, key: string, value: number): void;
+  getCompiledCircuit(): CompiledCircuitBase | null;
+  getAllPortStates(): PortState[];
+}
+
+/** Minimal compiled circuit shape shared across solver backends. */
+export interface CompiledCircuitBase {
+  ports: PortState[];
+  components: ComponentInstance[];
 }
 
 // ============================================================

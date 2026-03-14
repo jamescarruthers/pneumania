@@ -1,18 +1,21 @@
 import { create } from 'zustand';
-import { type PortState, type SimParams, DEFAULT_SIM_PARAMS } from '../solver/types';
+import { type PortState, type SimParams, type Solver, DEFAULT_SIM_PARAMS } from '../solver/types';
 import { TLMSolverEngine } from '../solver/engine';
+import { RapierHybridSolver, ensureRapierInit } from '../solver/rapier/RapierHybridSolver';
+import type { SolverBackend } from '../solver/interface';
 
 export type SimSpeed = 0.1 | 0.25 | 0.5 | 1 | 2 | 5 | 10;
 
 interface SimulationState {
   running: boolean;
   speed: SimSpeed;
-  solver: TLMSolverEngine;
+  solver: Solver;
   simParams: SimParams;
   portStates: PortState[];
   componentStates: Map<string, Record<string, number>>;
-  solverBackend: 'js' | 'webgpu' | 'wasm';
+  solverBackend: SolverBackend;
   stepsPerSecond: number;
+  switchingBackend: boolean;
 
   // Actions
   play: () => void;
@@ -21,7 +24,7 @@ interface SimulationState {
   stepOnce: () => void;
   reset: () => void;
   setSpeed: (speed: SimSpeed) => void;
-  setSolverBackend: (backend: 'js' | 'webgpu' | 'wasm') => void;
+  setSolverBackend: (backend: SolverBackend) => Promise<void>;
   updateFromSolver: () => void;
   setMouseForce: (componentId: string, force: number) => void;
   clearMouseForce: (componentId: string) => void;
@@ -37,6 +40,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   componentStates: new Map(),
   solverBackend: 'js',
   stepsPerSecond: 0,
+  switchingBackend: false,
 
   play: () => set({ running: true }),
   pause: () => set({ running: false }),
@@ -58,7 +62,35 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
 
   setSpeed: (speed) => set({ speed }),
 
-  setSolverBackend: (backend) => set({ solverBackend: backend }),
+  setSolverBackend: async (backend: SolverBackend) => {
+    const { solver: oldSolver, running } = get();
+    if (running) return; // don't switch while running
+
+    set({ switchingBackend: true });
+
+    try {
+      let newSolver: Solver;
+      if (backend === 'rapier') {
+        await ensureRapierInit();
+        newSolver = new RapierHybridSolver();
+      } else {
+        newSolver = new TLMSolverEngine();
+      }
+
+      oldSolver.dispose();
+      set({
+        solver: newSolver,
+        solverBackend: backend,
+        simParams: { ...DEFAULT_SIM_PARAMS },
+        portStates: [],
+        componentStates: new Map(),
+        switchingBackend: false,
+      });
+    } catch (err) {
+      console.error('Failed to switch solver backend:', err);
+      set({ switchingBackend: false });
+    }
+  },
 
   updateFromSolver: () => {
     const { solver } = get();
